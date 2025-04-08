@@ -1,0 +1,52 @@
+import torch
+import dgl
+from bgmol.datasets import AImplicitUnconstrained
+import mdtraj as md
+from scipy.stats import vonmises
+from bgflow.utils import remove_mean
+import numpy as np
+
+def get_alanine_traj():
+    dataset = AImplicitUnconstrained(read=True)
+    ala_traj = md.Trajectory(dataset.xyz, dataset.system.mdtraj_topology)
+    return ala_traj
+
+def get_alanine_dataset():
+    n_particles = 22
+    n_dimensions = 3
+    dim = n_particles * n_dimensions
+    scaling = 10
+    data_smaller = torch.from_numpy(np.load("data/AD2_relaxed_weighted.npy")).float()/10
+    data_smaller = remove_mean(data_smaller, n_particles, n_dimensions).reshape(-1, dim) * scaling
+    return data_smaller
+
+def get_alanine_h_initial():
+    ala_traj=get_alanine_traj()
+    atom_dict = {"H": 0, "C":1, "N":2, "O":3}
+    atom_types = []
+    for atom_name in ala_traj.topology.atoms:
+        atom_types.append(atom_name.name[0])
+    atom_types = np.array([atom_dict[atom_type] for atom_type in atom_types])
+
+class alanine_dataset(dgl.data.DGLDataset):
+    def __init__(self, dataset,h_initial):
+        self.dataset = dataset
+        self.n_particles = 22
+        self.n_dimensions = 3
+        self.dim = self.n_particles * self.n_dimensions
+        self.n_samples = len(dataset)
+        self.h_intial = h_initial.cpu()
+        self.nodes=torch.arange(self.n_particles)
+        self.edges=torch.cartesian_prod(self.nodes,self.nodes)
+        self.edges=self.edges[self.edges[:,0]!=self.edges[:,1]].transpose(0,1)
+        self.graphs=[]
+        for i in range(self.n_samples):
+            g = dgl.graph((self.edges[0].cpu(),self.edges[1].cpu()),num_nodes=self.n_particles)
+            g.ndata['x'] = torch.empty((self.n_particles, self.n_dimensions))
+            g.ndata['h'] = self.h_intial
+            self.graphs.append(g)
+    def __len__(self):
+        return self.n_samples
+    def __getitem__(self, idx):
+        self.graphs[idx].ndata['x'] = self.dataset[idx].reshape(self.n_particles, self.n_dimensions)
+        return self.graphs[idx]
