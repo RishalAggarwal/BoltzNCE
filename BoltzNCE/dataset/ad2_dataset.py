@@ -20,13 +20,29 @@ def get_alanine_dataset():
     data_smaller = remove_mean(data_smaller, n_particles, n_dimensions).reshape(-1, dim) * scaling
     return data_smaller
 
-def get_alanine_h_initial():
+def get_alanine_features():
     ala_traj=get_alanine_traj()
     atom_dict = {"H": 0, "C":1, "N":2, "O":3}
     atom_types = []
     for atom_name in ala_traj.topology.atoms:
         atom_types.append(atom_name.name[0])
     atom_types = np.array([atom_dict[atom_type] for atom_type in atom_types])
+    atom_types[[4,6,8,14,16]] = np.arange(4, 9)
+    atom_types_train = np.arange(22)
+    atom_types_train[[1, 2, 3]] = 2
+    atom_types_train[[19, 20, 21]] = 20
+    atom_types_train[[11, 12, 13]] = 12
+    h_initial = torch.nn.functional.one_hot(torch.tensor(atom_types_train))
+    return atom_types, h_initial
+
+def get_alanine_types_dataset_dataloaders(dataset=None,batch_size=512,shuffle=True,num_workers=8):
+    if dataset is None:
+        dataset = get_alanine_dataset()
+    atom_types, h_initial = get_alanine_features()
+    dataset = alanine_dataset(dataset,h_initial)
+    dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    return atom_types,dataset,dataloader
+
 
 class alanine_dataset(dgl.data.DGLDataset):
     def __init__(self, dataset,h_initial):

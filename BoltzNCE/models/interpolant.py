@@ -334,8 +334,3 @@ class Interpolant(torch.nn.Module):
         with torch.set_grad_enabled(True):
             samples=self.simulate(samples,steps=20,simulation_fn=self.MALA_steps,time=0)
         return samples
-            
-                
-    
-        
-    
