@@ -6,12 +6,12 @@ import tqdm
 
 
 class Interpolant(torch.nn.Module):
-    def __init__(self, potential_function=None,h_initial=None,n_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None):
+    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None):
         super().__init__()
         self.potential_function = potential_function
         self.vector_field=vector_field
         self.prior = torch.distributions.MultivariateNormal(torch.zeros(dim), torch.eye(dim))
-        self.n_particles = n_particles
+        self.n_particles = num_particles
         self.n_dimensions = n_dimensions
         self.h_initial = h_initial.to('cuda')
         self.dim = dim

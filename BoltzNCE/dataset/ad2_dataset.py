@@ -41,7 +41,7 @@ def get_alanine_types_dataset_dataloaders(dataset=None,batch_size=512,shuffle=Tr
     atom_types, h_initial = get_alanine_features()
     dataset = alanine_dataset(dataset,h_initial)
     dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-    return atom_types,dataset,dataloader
+    return atom_types,h_initial,dataset,dataloader
 
 
 class alanine_dataset(dgl.data.DGLDataset):

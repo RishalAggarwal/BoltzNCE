@@ -6,7 +6,7 @@ from swish import SwishBeta
 
 
 class GVP_vector_field(torch.nn.Module):
-    def __init__(self, n_features=16, n_layers=5, n_hidden=64,n_vec=16,n_message_gvps=1,n_update_gvps=1,n_coord_gvps=1,num_particles=22, use_dst_feats=False,vector_gating=True):
+    def __init__(self, n_features=21, n_layers=5, n_hidden=64,n_vec=16,n_message_gvps=1,n_update_gvps=1,n_coord_gvps=1,num_particles=22, use_dst_feats=False,vector_gating=True):
         super(GVP_vector_field, self).__init__()
         self.n_vec_channels=n_vec
         self.initial_embedding = torch.nn.Sequential(torch.nn.Linear(n_features+1, n_hidden),nn.SiLU())
