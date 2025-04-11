@@ -9,6 +9,7 @@ import dgl
 import yaml
 import argparse
 import wandb
+from infer_ad2 import gen_samples
 
 #alanine globals
 global_vars={}
@@ -30,7 +31,7 @@ def parse_arguments():
     p.add_argument('--save_potential_checkpoint', type=str, default=None)
     p.add_argument('--save_vector_field_checkpoint', type=str, default=None)
     p.add_argument('--config_save_name', type=str, default='./saved_models/default_config.yaml')
-
+    p.add_argument('--model_type', type=str, default='vector_field')
 
     dataloader_group=p.add_argument_group('dataloader')
     dataloader_group.add_argument('--num_workers', type=int, default=8)
@@ -38,7 +39,6 @@ def parse_arguments():
     dataloader_group.add_argument('--shuffle', type=bool, default=True)
 
     training_group=p.add_argument_group('training')
-    training_group.add_argument('--model_type', type=str, default='vector_field')
     training_group.add_argument('--num_epochs', type=int, default=1000)
     training_group.add_argument('--window_size', type=float, default=0.025)
 
@@ -107,7 +107,7 @@ def get_args():
                 setattr(args, key, value)
     return args
 
-def train_vector_field(n_epochs: int, dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,window_size):
+def train_vector_field(dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,n_epochs: int,window_size):
     for epoch in tqdm.tqdm(range(n_epochs)):
         losses=[]
         for it,g in enumerate(dataloader):
@@ -131,7 +131,7 @@ def train_vector_field(n_epochs: int, dataloader: alanine_dataset,interpolant_ob
         print(f"Epoch {epoch}: Vector Field Loss: {sum(losses)/len(losses)}")
     return vector_model
 
-def train_potential(n_epochs: int, dataloader: alanine_dataset,interpolant_obj: Interpolant, potential_model , optim_potential, scheduler_potential,window_size):
+def train_potential( dataloader: alanine_dataset,interpolant_obj: Interpolant, potential_model , optim_potential, scheduler_potential,n_epochs: int,window_size):
     for epoch in tqdm.tqdm(range(n_epochs)):
         losses=[]
         losses_score=[]
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     args=merge_global_args(args)
     
     if args.wandb:
-        wandb.init(project=args.wandb_project, name=args.wand_name)
+        wandb.init(project=args.wandb_project, name=args.wandb_name)
         wandb.config.update(args)
     
     args=merge_model_args(args)
@@ -185,7 +185,6 @@ if __name__ == "__main__":
     # Load the dataset and create the dataloader
     atom_types, h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(**args['dataloader'])
 
-    # Initialize the models
     potential_model=GVP_EBM(**args['potential_model']).cuda()
     if args['potential_model_checkpoint'] is not None:
         potential_model.load_state_dict(torch.load(potential_model.model_checkpoint))
@@ -199,6 +198,22 @@ if __name__ == "__main__":
     scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])
     optim_vector=torch.optim.Adam(vector_field.parameters(), **args['optimizer'])
     scheduler_vector=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_vector,**args['scheduler'])
+
+    if args['model_type']=='vector_field':
+        vector_field=train_vector_field( dataloader,interpolant_obj, vector_field , optim_vector, scheduler_vector,**args['training'])
+        torch.save(vector_field.state_dict(), args['save_vector_field_checkpoint'])
+        interpolant_obj.vector_field=vector_field
+
+    elif args['model_type']=='potential':
+        samples_np=gen_samples(n_samples=500,n_sample_batches=200,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
+        atom_types, h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(samples_np,**args['dataloader'])
+        potential_model=train_potential( dataloader,interpolant_obj, potential_model , optim_potential, scheduler_potential,**args['training'])
+        torch.save(potential_model.state_dict(), args['save_potential_checkpoint']) 
+        interpolant_obj.potential_function=potential_model
+    else:
+        raise ValueError("Model type must be either 'vector_field' or 'potential'") 
+    
+
 
 
 
