@@ -52,7 +52,36 @@ def gen_samples(n_samples,n_sample_batches,interpolant_obj,integral_type='ode',e
     
     latent_np = latent_np.reshape(-1, dim)
     samples_np = samples_np.reshape(-1, dim)
-    samples_np = samples_np.reshape(-1, dim)
+    samples_np = samples_np * interpolant_obj.scaling
     time_end = time.time()
     print("Sampling took {} seconds".format(time_end - time_start))
     return samples_np
+
+'''def get_energies_and_weights(model,samples):
+    dlogf_all=[]
+    samples_torch=torch.from_numpy(samples).float().cuda()
+    batch_size=1000
+    i=0
+    while (i+batch_size)<len(samples_torch):
+        samples_prob=samples_torch[i:i+batch_size]
+        dlogf=model.log_prob_forward(samples_prob)
+        dlogf_all.append(dlogf.cpu().detach())
+        i=i+batch_size
+    samples_prob=samples_torch[i:len(samples_torch)]
+    dlogf=model.log_prob_forward(samples_prob)
+    dlogf_all.append(dlogf.cpu().detach())
+    dlogf_all=torch.cat(dlogf_all,dim=0)
+    dlogf_all=dlogf_all-torch.logsumexp(dlogf_all,dim=(0,1))
+    dlogf_np=dlogf_all.cpu().detach().numpy()
+    energies_np = as_numpy(target_xtb.energy(torch.from_numpy(samples)/scaling))
+    energy_offset = 34600
+    energies_np += energy_offset
+    energies_torch=torch.tensor(-energies_np)
+    energies_torch=energies_torch - torch.logsumexp(energies_torch,dim=(0,1))
+    energies_w=energies_torch.numpy()
+    plt.scatter(energies_w[energies_np<0],dlogf_np[energies_np<0])
+    plt.xlabel('Boltzmann Weight')
+    plt.ylabel('Model Likelihood')
+    log_w_np = as_numpy(energies_w).reshape(-1,1) - dlogf_np.reshape(-1,1)
+    print("Sampling efficiency: ",sampling_efficiency(torch.from_numpy(log_w_np)).item())
+    return dlogf_np,energies_np,log_w_np'''

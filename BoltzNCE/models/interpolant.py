@@ -6,7 +6,7 @@ import tqdm
 
 
 class Interpolant(torch.nn.Module):
-    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None):
+    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0):
         super().__init__()
         self.potential_function = potential_function
         self.vector_field=vector_field
@@ -20,6 +20,7 @@ class Interpolant(torch.nn.Module):
         self.edges=self.edges[self.edges[:,0]!=self.edges[:,1]].transpose(0,1)
         self.interpolant_type=interpolant_type
         self.graph=None
+        self.scaling=scaling
 
     def alpha(self,t):
         if self.interpolant_type=='linear':

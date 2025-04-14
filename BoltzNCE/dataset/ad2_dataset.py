@@ -5,9 +5,13 @@ import mdtraj as md
 from scipy.stats import vonmises
 from bgflow.utils import remove_mean
 import numpy as np
+import os
 
 def get_alanine_traj():
-    dataset = AImplicitUnconstrained(read=True)
+    download=False
+    if not os.path.exists("AImplicitUnconstrained/traj0.h5"):
+        download=True
+    dataset = AImplicitUnconstrained(read=True,download=download)
     ala_traj = md.Trajectory(dataset.xyz, dataset.system.mdtraj_topology)
     return ala_traj
 
@@ -16,7 +20,7 @@ def get_alanine_dataset():
     n_dimensions = 3
     dim = n_particles * n_dimensions
     scaling = 10
-    data_smaller = torch.from_numpy(np.load("data/AD2_relaxed_weighted.npy")).float()/10
+    data_smaller = torch.from_numpy(np.load("../data/AD2_relaxed_weighted.npy")).float()/10
     data_smaller = remove_mean(data_smaller, n_particles, n_dimensions).reshape(-1, dim) * scaling
     return data_smaller
 
@@ -35,21 +39,26 @@ def get_alanine_features():
     h_initial = torch.nn.functional.one_hot(torch.tensor(atom_types_train))
     return atom_types, h_initial
 
-def get_alanine_types_dataset_dataloaders(dataset=None,batch_size=512,shuffle=True,num_workers=8):
+def get_alanine_types_dataset_dataloaders(dataset=None,batch_size=512,shuffle=True,num_workers=8,scaling=1.0):
     if dataset is None:
         dataset = get_alanine_dataset()
     atom_types, h_initial = get_alanine_features()
-    dataset = alanine_dataset(dataset,h_initial)
+    dataset = alanine_dataset(dataset,h_initial,scaling)
     dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return atom_types,h_initial,dataset,dataloader
 
 
 class alanine_dataset(dgl.data.DGLDataset):
-    def __init__(self, dataset,h_initial):
+    def __init__(self, dataset,h_initial,scaling=1.0):
         self.dataset = dataset
+        original_shape = dataset.shape
         self.n_particles = 22
         self.n_dimensions = 3
         self.dim = self.n_particles * self.n_dimensions
+        self.dataset = remove_mean(self.dataset, self.n_particles, self.n_dimensions).reshape(-1, self.dim)
+        print(torch.max(self.dataset))
+        self.dataset = self.dataset/scaling
+        self.dataset = self.dataset.reshape(original_shape)
         self.n_samples = len(dataset)
         self.h_intial = h_initial.cpu()
         self.nodes=torch.arange(self.n_particles)

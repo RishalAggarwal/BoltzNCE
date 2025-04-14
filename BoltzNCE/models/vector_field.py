@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from gvp import GVPConv, NodePositionUpdate
-from swish import SwishBeta
+from .gvp import GVPConv, NodePositionUpdate
+from .swish import SwishBeta
 
 
 class GVP_vector_field(torch.nn.Module):
