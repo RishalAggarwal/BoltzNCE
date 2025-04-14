@@ -1,3 +1,10 @@
 bgflow/
 bgmol/
 data/*
+BoltzNCE/AImplicitUnconstrained/
+BoltzNCE/AImplicitUnconstrained.tgz
+BoltzNCE/slurm-*
+BoltzNCE/wandb/
+BoltzNCE/saved_models/*
+BoltzNCE/submit_train.sh
+configs/*
