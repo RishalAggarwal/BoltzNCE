@@ -1,6 +1,8 @@
 bgflow/
 bgmol/
-data/*
+data/all_data*
+data/dw4*
+data/get_data.txt
 BoltzNCE/AImplicitUnconstrained/
 BoltzNCE/AImplicitUnconstrained.tgz
 BoltzNCE/slurm-*

@@ -17,10 +17,13 @@ class GVP_EBM(torch.nn.Module):
     def forward(self,t,data,return_logprob=False):
         x_init = data.ndata['x'].clone()
         v_init = torch.zeros((data.num_nodes(), self.n_vec_channels, 3), device='cuda')
-        t.requires_grad_(True)
-        x_init.requires_grad_(True)
-        v_init.requires_grad_(True)
-        with torch.set_grad_enabled(True):
+        torch_grad=False
+        if self.training:
+            torch_grad=True
+            t.requires_grad_(True)
+            x_init.requires_grad_(True)
+            v_init.requires_grad_(True)
+        with torch.set_grad_enabled(torch_grad):
             ts=t.repeat_interleave(self.num_particles)
             ts=ts.view(-1,1)
             z_init = torch.cat([data.ndata['h'],ts],dim=1)

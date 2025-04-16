@@ -3,10 +3,12 @@ import torchdiffeq
 import dgl
 import numpy as np
 import tqdm
+import ot
+from scipy.optimize import linear_sum_assignment
 
 
 class Interpolant(torch.nn.Module):
-    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0):
+    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False):
         super().__init__()
         self.potential_function = potential_function
         self.vector_field=vector_field
@@ -21,6 +23,7 @@ class Interpolant(torch.nn.Module):
         self.interpolant_type=interpolant_type
         self.graph=None
         self.scaling=scaling
+        self.ot=ot
 
     def alpha(self,t):
         if self.interpolant_type=='linear':
@@ -67,12 +70,29 @@ class Interpolant(torch.nn.Module):
         alpha_t_dot_extended=alpha_t_dot_extended.view(-1,1)
         sigma_t_dot_extended=sigma_t_dot.repeat_interleave(self.n_particles)
         sigma_t_dot_extended=sigma_t_dot_extended.view(-1,1)
-        g.ndata['x1'] = torch.randn_like(g.ndata['x'])
+        coords_prior = torch.randn_like(g.ndata['x'])
+        coords_shape=g.ndata['x'].shape
+        if self.ot:
+            coords_sample=g.ndata['x']
+            coords_prior=coords_prior.view(-1,self.dim)
+            coords_sample=coords_sample.view(-1,self.dim)
+            row_ind, col_ind = self.OT_coupling(coords_sample,coords_prior)
+            coords_prior=coords_prior[col_ind]
+            coords_prior=coords_prior.view(coords_shape)
+            coords_sample=coords_sample.view(coords_shape)
+        g.ndata['x1']=coords_prior
         g.ndata['xt'] = alpha_t_extended*g.ndata['x'] + sigma_t_extended*g.ndata['x1']
         g.ndata['v'] = alpha_t_dot_extended*g.ndata['x'] + sigma_t_dot_extended*g.ndata['x1']
         g.ndata['x']=g.ndata['xt']
         return g
 
+    def OT_coupling(self,x,y):
+        C=torch.cdist(x,y)
+        C=C**2
+        C=C/C.max()
+        C=C.cpu().numpy()
+        row_ind, col_ind = linear_sum_assignment(C)
+        return row_ind,col_ind
     
     def velocity_from_score(self,t,x,score):
         alpha_t=self.alpha(t)
@@ -209,6 +229,8 @@ class Interpolant(torch.nn.Module):
 
     def simulate(self,samples,steps,simulation_fn,step_size=2e-4,time=0.0):
         samples_torch=samples
+        samples_torch=samples_torch/self.scaling
+        step_size=step_size/self.scaling
         if type(samples) != torch.Tensor:
             samples_torch=torch.from_numpy(samples).cuda().float()
         batchsize=500
@@ -224,6 +246,7 @@ class Interpolant(torch.nn.Module):
         samples_simulate.requires_grad=True
         samples_simulate=simulation_fn(samples_simulate,steps,step_size,time)
         samples_torch[i:]=samples_simulate.detach().cuda()
+        samples_torch=samples_torch*self.scaling
         if type(samples) != torch.Tensor:
             samples_np=samples_torch.cpu().detach().numpy()
             return samples_np

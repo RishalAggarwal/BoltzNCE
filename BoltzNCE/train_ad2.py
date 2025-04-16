@@ -9,6 +9,8 @@ import dgl
 import yaml
 import argparse
 import wandb
+from utils.utils import load_models
+from utils.arguments import get_args
 from infer_ad2 import gen_samples
 
 #alanine globals
@@ -75,6 +77,7 @@ def parse_arguments():
 
     interpolant_group=p.add_argument_group('interpolant')
     interpolant_group.add_argument('--interpolant_type', type=str,required=False, default='linear')
+    interpolant_group.add_argument('--ot', type=bool,required=False, default=False)
 
     args=p.parse_args()
     return args,p
@@ -97,36 +100,7 @@ def merge_model_args(args):
     args['interpolant']['scaling']=args['dataloader']['scaling']
     return args
 
-def args_to_dict(args,p):
-    args_dict = {}
-    for group in p._action_groups:
-        
-        if group.title == 'positional arguments':
-            continue
-        if group.title == 'options':
-            for action in group._group_actions:
-                if action.dest != 'help':
-                    args_dict[action.dest] = args.__dict__[action.dest]
-        else:
-            args_dict[group.title] = {}
-            for action in group._group_actions:
-                if action.dest != 'help':
-                    args_dict[group.title][action.dest] = args.__dict__[action.dest]
-    return args_dict
 
-def get_args():
-    args,p=parse_arguments()
-    args=args_to_dict(args,p)
-    if args['config'] is not None:
-        with open(args['config'], 'r') as f:
-            config = yaml.safe_load(f)
-        for key, value in config.items():
-            if isinstance(value, dict):
-                for sub_key, sub_value in value.items():
-                    args[key][sub_key] = sub_value
-            else:
-                args[key] = value
-    return args
 
 def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,window_size):
     for epoch in tqdm.tqdm(range(num_epochs)):
@@ -193,8 +167,8 @@ def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpola
     return potential_model
 
 if __name__ == "__main__":
-    
-    args=get_args()
+    args,p=parse_arguments()
+    args=get_args(args,p)
     args=merge_global_args(args)
     args=merge_model_args(args)
     
@@ -207,20 +181,9 @@ if __name__ == "__main__":
         yaml.dump(args, f)
 
     # Load the dataset and create the dataloader
-    atom_types, h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(**args['dataloader'])
+    h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(**args['dataloader'])
 
-    potential_model=GVP_EBM(**args['potential_model'],**args['gvp']).cuda()
-    pytorch_total_params = sum(p.numel() for p in potential_model.parameters())
-    print(f"Total number of parameters in potential model: {pytorch_total_params}")
-    if args['load_potential_checkpoint'] is not None:
-        potential_model.load_state_dict(torch.load(args['load_potential_checkpoint']))
-    vector_field=GVP_vector_field(**args['vector_field_model'],**args['gvp']).cuda()
-    pytorch_total_params = sum(p.numel() for p in vector_field.parameters())
-    print(f"Total number of parameters in vector field model: {pytorch_total_params}")
-    if args['load_vector_field_checkpoint'] is not None:
-        vector_field.load_state_dict(torch.load(args['load_vector_field_checkpoint']))
-    # Initialize the interpolant
-    interpolant_obj=Interpolant(h_initial=h_initial,potential_function=potential_model,vector_field=vector_field,**args['interpolant']).cuda()
+    potential_model, vector_field, interpolant_obj=load_models(args,h_initial=h_initial)
 
     optim_potential=torch.optim.Adam(potential_model.parameters(), **args['optimizer'])
     scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])
@@ -235,7 +198,7 @@ if __name__ == "__main__":
     elif args['model_type']=='potential':
         #hardcoded arguments for now
         samples_np=gen_samples(n_samples=500,n_sample_batches=200,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
-        atom_types, h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(torch.from_numpy(samples_np).float(),**args['dataloader'])
+        h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(dataset=torch.from_numpy(samples_np).float(),**args['dataloader'])
         potential_model=train_potential(args, dataloader,interpolant_obj, potential_model , optim_potential, scheduler_potential,**args['training'])
         torch.save(potential_model.state_dict(), args['save_potential_checkpoint']) 
         interpolant_obj.potential_function=potential_model
