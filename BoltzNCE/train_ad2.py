@@ -12,6 +12,7 @@ import wandb
 from utils.utils import load_models
 from utils.arguments import get_args
 from infer_ad2 import gen_samples
+from ema_pytorch import EMA
 
 #alanine globals
 global_vars={}
@@ -34,6 +35,8 @@ def parse_arguments():
     p.add_argument('--save_vector_field_checkpoint', type=str,required=False, default=None)
     p.add_argument('--config_save_name', type=str,required=False, default='./saved_models/default_config.yaml')
     p.add_argument('--model_type', type=str,required=False, default='vector_field')
+    p.add_argument('--optimizer_type', type=str,required=False, default='adam')
+    p.add_argument('--ema', type=bool,required=False, default=False)
 
     dataloader_group=p.add_argument_group('dataloader')
     dataloader_group.add_argument('--num_workers', type=int,required=False, default=8)
@@ -50,6 +53,10 @@ def parse_arguments():
     optimizer_group.add_argument('--lr', type=float,required=False, default=1e-3)
     optimizer_group.add_argument('--weight_decay', type=float,required=False, default=0.0)
 
+    ema_group=p.add_argument_group('ema_model')
+    ema_group.add_argument('--beta', type=float,required=False, default=0.999)
+    ema_group.add_argument('--update_every', type=int,required=False, default=10)
+    ema_group.add_argument('--update_model_with_ema_every', type=int,required=False, default=None)
     
     scheduler_group=p.add_argument_group('scheduler')
     scheduler_group.add_argument('--factor', type=float,required=False, default=0.5)
@@ -103,6 +110,9 @@ def merge_model_args(args):
 
 
 def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,window_size):
+    #hardcoding arguments for now
+    if args['ema']:
+        ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
     for epoch in tqdm.tqdm(range(num_epochs)):
         losses=[]
         for it,g in enumerate(dataloader):
@@ -122,12 +132,19 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
                 wandb.log({"vector_loss": loss_vector.item()})
             loss_vector.backward()
             optim_vector.step()
+            if args['ema']:
+                ema.update()
             losses.append(loss_vector.item())
         scheduler_vector.step(sum(losses)/len(losses))
         print(f"Epoch {epoch}: Vector Field Loss: {sum(losses)/len(losses)}")
+    if args['ema']:
+        vector_model=ema.ema_model
     return vector_model
 
 def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpolant, potential_model , optim_potential, scheduler_potential,num_epochs: int,window_size):
+    #hardcoding arguments for now
+    if args['ema']:
+        ema = EMA(potential_model, beta=0.999, allow_different_devices = True)
     for epoch in tqdm.tqdm(range(num_epochs)):
         losses=[]
         losses_score=[]
@@ -146,7 +163,10 @@ def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpola
             score=score.view(-1,interpolant_obj.dim)
             loss_score=torch.mean((sigma_t*score + score_target)**2)
             ll_positives=potential_model(t,g,return_logprob=True)
-            t_negative=torch.randn(batch_size,1).cuda() * window_size + t
+            if window_size<1:
+                t_negative=torch.randn(batch_size,1).cuda() * window_size + t
+            else:
+                t_negative=torch.rand(batch_size,1).cuda()
             t_negative=torch.clamp(t_negative,0,1)
             ll_negatives=potential_model(t_negative,g,return_logprob=True)
             loss_nce=-torch.mean(ll_positives-torch.logsumexp(torch.cat([ll_negatives.unsqueeze(1),ll_positives.unsqueeze(1)],dim=1),dim=1))
@@ -157,6 +177,8 @@ def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpola
                 wandb.log({"potential_nce_loss": loss_nce.item()})
             loss.backward()
             optim_potential.step()
+            if args['ema']:
+                ema.update()
             losses.append(loss.item())
             losses_score.append(loss_score.item())
             losses_nce.append(loss_nce.item())
@@ -164,6 +186,8 @@ def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpola
         print(f"Epoch {epoch}: Potential Loss: {sum(losses)/len(losses)}")
         print(f"Epoch {epoch}: Potential Score Loss: {sum(losses_score)/len(losses_score)}")
         print(f"Epoch {epoch}: Potential NCE Loss: {sum(losses_nce)/len(losses_nce)}")
+    if args['ema']:
+        potential_model=ema.ema_model
     return potential_model
 
 if __name__ == "__main__":
@@ -176,18 +200,23 @@ if __name__ == "__main__":
         wandb.init(project=args['wandb_project'], name=args['wandb_name'])
         wandb.config.update(args)
     
-    # Save the config to a file
-    with open(args['config_save_name'], 'w') as f:
-        yaml.dump(args, f)
+    
 
     # Load the dataset and create the dataloader
     h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(**args['dataloader'])
 
     potential_model, vector_field, interpolant_obj=load_models(args,h_initial=h_initial)
 
-    optim_potential=torch.optim.Adam(potential_model.parameters(), **args['optimizer'])
+    optimizer=torch.optim.Adam
+    if args['optimizer_type']=='adam':
+        optimizer=torch.optim.Adam
+    elif args['optimizer_type']=='adamw':
+        optimizer=torch.optim.AdamW
+    else:
+        raise ValueError("Optimizer type must be either 'adam' or 'adamw'")
+    optim_potential=optimizer(potential_model.parameters(), **args['optimizer'])
     scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])
-    optim_vector=torch.optim.Adam(vector_field.parameters(), **args['optimizer'])
+    optim_vector=optimizer(vector_field.parameters(), **args['optimizer'])
     scheduler_vector=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_vector,**args['scheduler'])
 
     if args['model_type']=='vector_field':
@@ -197,7 +226,7 @@ if __name__ == "__main__":
 
     elif args['model_type']=='potential':
         #hardcoded arguments for now
-        samples_np=gen_samples(n_samples=500,n_sample_batches=200,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
+        samples_np,_=gen_samples(n_samples=500,n_sample_batches=200,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
         h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(dataset=torch.from_numpy(samples_np).float(),**args['dataloader'])
         potential_model=train_potential(args, dataloader,interpolant_obj, potential_model , optim_potential, scheduler_potential,**args['training'])
         torch.save(potential_model.state_dict(), args['save_potential_checkpoint']) 
@@ -205,7 +234,9 @@ if __name__ == "__main__":
     else:
         raise ValueError("Model type must be either 'vector_field' or 'potential'") 
     
-
+    # Save the config to a file
+    with open(args['config_save_name'], 'w') as f:
+        yaml.dump(args, f)
 
 
 

@@ -63,6 +63,7 @@ class alanine_dataset(dgl.data.DGLDataset):
         self.n_dimensions = 3
         self.dim = self.n_particles * self.n_dimensions
         self.dataset = remove_mean(self.dataset, self.n_particles, self.n_dimensions).reshape(-1, self.dim)
+        print(torch.max(self.dataset),torch.std(self.dataset))
         self.dataset = self.dataset/scaling
         self.dataset = self.dataset.reshape(original_shape)
         self.n_samples = len(dataset)

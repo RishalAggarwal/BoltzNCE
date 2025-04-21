@@ -15,4 +15,4 @@ mamba install openmmtools -y
 mamba install xtb-python -y
 pip install torchdiffeq
 pip install POT
-mamba install plotly -y
+pip install ema-pytorch

@@ -138,6 +138,23 @@ class Interpolant(torch.nn.Module):
             position_score=self.score(t,x)
             velocity=self.velocity_from_score(t,x,position_score)
         return velocity
+    
+    def ode_divergence_forward(self,t,x_log_prob_tuple):
+        x=x_log_prob_tuple[0].clone().detach()
+        log_prob=x_log_prob_tuple[1]
+        with torch.set_grad_enabled(True):
+            x.requires_grad=True
+            self.graph.ndata['x']=x.view(-1,self.n_dimensions)
+            t_clone=t.clone()
+            t_clone=t_clone*torch.ones((self.graph.batch_size,1)).to('cuda')
+            velocity=self.vector_field(t_clone,self.graph)
+            velocity=velocity.view(-1,self.dim)
+            #compute dlogp
+            dlogp=torch.zeros((x.shape[0])).to(x.device)
+            for i in range(self.dim):
+                dlogp+= torch.autograd.grad(velocity[:,i], x,grad_outputs=torch.ones_like(velocity[:,i]),retain_graph=True)[0][:,i]
+        return (velocity, -dlogp)
+
 
     def sde_forward(self,t,x):
         position_score=self.score(t,x)
@@ -176,8 +193,23 @@ class Interpolant(torch.nn.Module):
         if self.vector_field is not None:
             tmax=1.0
         t = torch.linspace(tmax, 0., 100).to('cuda')
-        x=torchdiffeq.odeint(self.ode_forward, x_init, t, method='dopri5',atol=1e-5,rtol=1e-5)
+        x=torchdiffeq.odeint_adjoint(self.ode_forward, x_init, t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
         return x[-1]
+    
+    @torch.no_grad()
+    def ode_divergence_integral(self,n_samples):
+        self.setup_graph(n_samples)
+        x_init=self.prior.sample((n_samples,))
+        log_prob_init=self.prior.log_prob(x_init).view(-1,1)
+        x_init=x_init.to('cuda')
+        log_prob_init=log_prob_init.to('cuda')
+        self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
+        tmax=0.999
+        if self.vector_field is not None:
+            tmax=1.0
+        t = torch.linspace(tmax, 0., 100).to('cuda')
+        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,log_prob_init), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+        return x[-1],log_prob[-1]
     
     def setup_graph(self,batch_size):
         if (self.graph is not None) and (self.graph.batch_size==batch_size):

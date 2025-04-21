@@ -59,6 +59,12 @@ def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral
                     samples=interpolant_obj.ode_integral(n_samples)
                 elif integral_type=='PC':
                     samples=interpolant_obj.PC_integral(n_samples)
+                elif integral_type=='ode_divergence':
+                    samples,logp_samples=interpolant_obj.ode_divergence_integral(n_samples)
+                    dlogp_all.append(logp_samples.cpu().detach().numpy())
+
+                else:
+                    raise ValueError("integral_type not recognized")
                 
                 #dlogf=interpolant_obj.log_prob_forward(samples)
                 #latent = latent[0]
@@ -71,15 +77,14 @@ def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral
                 #dlogf_all.append(dlogf.cpu().detach())
                 #energies = target.energy(samples/scaling).detach().cpu().numpy()
                 #energies_np = np.append(energies_np, energies)
-            
-    
-    latent_np = latent_np.reshape(-1, dim)
+    if len(dlogp_all)>0:
+        dlogp_all = np.concatenate(dlogp_all, axis=0)
     samples_np = samples_np.reshape(-1, dim)
     samples_np = samples_np * interpolant_obj.scaling
     time_end = time.time()
     print("Sampling took {} seconds".format(time_end - time_start))
     wandb.log({"Sampling time": time_end - time_start})
-    return samples_np
+    return samples_np,dlogp_all
 
 def get_energies(samples,energies_holdout=True):
     scaling=10
@@ -100,6 +105,7 @@ def get_energies(samples,energies_holdout=True):
         data_holdout_xtb = torch.from_numpy(np.load("../data/AD2_relaxed_holdout.npy")).reshape(-1, 66)
         energies_data_holdout = target_xtb.energy(data_holdout_xtb[::9]/scaling)
         energies_data_holdout += energy_offset
+    #TODO implement jensen-shannon divergence for the energies
     return energies_np,energies_data_holdout
 
 def get_potential_logp(model: Interpolant,samples):
@@ -291,36 +297,6 @@ def get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np,prefix=''):
     print('predicted free energy difference: ', free_energy_difference)
 
 
-
-'''def get_energies_and_weights(model,samples):
-    dlogf_all=[]
-    samples_torch=torch.from_numpy(samples).float().cuda()
-    batch_size=1000
-    i=0
-    while (i+batch_size)<len(samples_torch):
-        samples_prob=samples_torch[i:i+batch_size]
-        dlogf=model.log_prob_forward(samples_prob)
-        dlogf_all.append(dlogf.cpu().detach())
-        i=i+batch_size
-    samples_prob=samples_torch[i:len(samples_torch)]
-    dlogf=model.log_prob_forward(samples_prob)
-    dlogf_all.append(dlogf.cpu().detach())
-    dlogf_all=torch.cat(dlogf_all,dim=0)
-    dlogf_all=dlogf_all-torch.logsumexp(dlogf_all,dim=(0,1))
-    dlogf_np=dlogf_all.cpu().detach().numpy()
-    energies_np = as_numpy(target_xtb.energy(torch.from_numpy(samples)/scaling))
-    energy_offset = 34600
-    energies_np += energy_offset
-    energies_torch=torch.tensor(-energies_np)
-    energies_torch=energies_torch - torch.logsumexp(energies_torch,dim=(0,1))
-    energies_w=energies_torch.numpy()
-    plt.scatter(energies_w[energies_np<0],dlogf_np[energies_np<0])
-    plt.xlabel('Boltzmann Weight')
-    plt.ylabel('Model Likelihood')
-    log_w_np = as_numpy(energies_w).reshape(-1,1) - dlogf_np.reshape(-1,1)
-    print("Sampling efficiency: ",sampling_efficiency(torch.from_numpy(log_w_np)).item())
-    return dlogf_np,energies_np,log_w_np'''
-
 if __name__== "__main__":
     args,p=parse_arguments()
     args=get_args(args,p)
@@ -333,9 +309,15 @@ if __name__== "__main__":
 
 
     if args['model_type']=='vector_field':
-        pass
+        samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type='ode_divergence',n_timesteps=1000)
+        wandb.log({"NLL_mean": -dlogf_np.mean()})
+        wandb.log({"NLL_std": -dlogf_np.std()})
+        energies_np,energies_data_holdout=get_energies(samples_np)
+        log_w_np=get_importance_weights(dlogf_np,energies_np)
+        samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=0)
+        get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
     elif args['model_type']=='potential':
-        samples_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
+        samples_np,_=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
         energies_np,energies_data_holdout=get_energies(samples_np)
         dlogf_np=get_potential_logp(interpolant_obj,samples_np)
         log_w_np=get_importance_weights(dlogf_np,energies_np)
