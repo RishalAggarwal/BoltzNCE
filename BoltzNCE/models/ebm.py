@@ -14,11 +14,11 @@ class GVP_EBM(torch.nn.Module):
         self.output = torch.nn.Linear(n_hidden, 1,bias=True)
         self.num_particles=num_particles
 
-    def forward(self,t,data,return_logprob=False):
+    def forward(self,t,data,return_logprob=False, require_grad=False):
         x_init = data.ndata['x'].clone()
         v_init = torch.zeros((data.num_nodes(), self.n_vec_channels, 3), device='cuda')
         torch_grad=False
-        if self.training:
+        if self.training or require_grad:
             torch_grad=True
             t.requires_grad_(True)
             x_init.requires_grad_(True)
@@ -38,3 +38,4 @@ class GVP_EBM(torch.nn.Module):
                 return energy
             position_grad= torch.autograd.grad(energy.sum(), x_init, create_graph=True)[0]
             return position_grad, energy
+        

@@ -306,6 +306,8 @@ if __name__== "__main__":
 
     h_initial = get_alanine_features()
     potential_model, vector_field, interpolant_obj = load_models(args,h_initial)
+    potential_model.eval()
+    vector_field.eval()
 
 
     if args['model_type']=='vector_field':

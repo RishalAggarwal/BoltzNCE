@@ -112,7 +112,7 @@ class Interpolant(torch.nn.Module):
             t=torch.ones((samples.shape[0],1)).to('cuda')
             t=t*time
             self.graph.ndata['x']=samples.view(-1,self.n_dimensions)
-            ll=self.potential_function(t,self.graph,return_logprob=True)
+            ll=self.potential_function(t,self.graph,return_logprob=True,require_grad=torch_grad)
             return ll
 
     def score(self,t,x):

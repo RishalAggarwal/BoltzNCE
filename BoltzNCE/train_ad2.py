@@ -6,6 +6,7 @@ from models.vector_field import GVP_vector_field
 from models.interpolant import Interpolant
 import tqdm
 import dgl
+import copy
 import yaml
 import argparse
 import wandb
@@ -48,6 +49,8 @@ def parse_arguments():
     training_group=p.add_argument_group('training')
     training_group.add_argument('--num_epochs', type=int,required=False, default=1000)
     training_group.add_argument('--window_size', type=float,required=False, default=0.025)
+    training_group.add_argument('--num_negatives', type=int,required=False, default=1)
+    training_group.add_argument('--nce_weight', type=float,required=False, default=1.0)
 
     optimizer_group=p.add_argument_group('optimizer')
     optimizer_group.add_argument('--lr', type=float,required=False, default=1e-3)
@@ -109,7 +112,7 @@ def merge_model_args(args):
 
 
 
-def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,window_size):
+def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,window_size,num_negatives, nce_weight):
     #hardcoding arguments for now
     if args['ema']:
         ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
@@ -141,7 +144,7 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
         vector_model=ema.ema_model
     return vector_model
 
-def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpolant, potential_model , optim_potential, scheduler_potential,num_epochs: int,window_size):
+def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpolant, potential_model: GVP_EBM, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float=1.0):
     #hardcoding arguments for now
     if args['ema']:
         ema = EMA(potential_model, beta=0.999, allow_different_devices = True)
@@ -164,13 +167,16 @@ def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpola
             loss_score=torch.mean((sigma_t*score + score_target)**2)
             ll_positives=potential_model(t,g,return_logprob=True)
             if window_size<1:
-                t_negative=torch.randn(batch_size,1).cuda() * window_size + t
+                t_negative=torch.randn(batch_size,num_negatives).cuda() * window_size + t
             else:
-                t_negative=torch.rand(batch_size,1).cuda()
+                t_negative=torch.rand(batch_size,num_negatives).cuda()
             t_negative=torch.clamp(t_negative,0,1)
-            ll_negatives=potential_model(t_negative,g,return_logprob=True)
-            loss_nce=-torch.mean(ll_positives-torch.logsumexp(torch.cat([ll_negatives.unsqueeze(1),ll_positives.unsqueeze(1)],dim=1),dim=1))
-            loss=loss_score + loss_nce
+            t_negative=t_negative.view(-1,1)
+            large_g=dgl.batch([g]* num_negatives)
+            ll_negatives=potential_model(t_negative,large_g,return_logprob=True)
+            ll_negatives=ll_negatives.view(-1,num_negatives)
+            loss_nce=-torch.mean(ll_positives-torch.logsumexp(torch.cat([ll_negatives,ll_positives],dim=1),dim=1).view(-1,1))
+            loss=loss_score + nce_weight*loss_nce
             if args['wandb']:
                 wandb.log({"potential_loss": loss.item()})
                 wandb.log({"potential_score_loss": loss_score.item()})
@@ -225,7 +231,7 @@ if __name__ == "__main__":
         interpolant_obj.vector_field=vector_field
 
     elif args['model_type']=='potential':
-        #hardcoded arguments for now
+        #TODO hardcoded arguments for now
         samples_np,_=gen_samples(n_samples=500,n_sample_batches=200,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
         h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(dataset=torch.from_numpy(samples_np).float(),**args['dataloader'])
         potential_model=train_potential(args, dataloader,interpolant_obj, potential_model , optim_potential, scheduler_potential,**args['training'])
