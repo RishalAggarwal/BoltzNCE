@@ -8,7 +8,7 @@ from scipy.optimize import linear_sum_assignment
 
 
 class Interpolant(torch.nn.Module):
-    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False):
+    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False,endpoint=False):
         super().__init__()
         self.potential_function = potential_function
         self.vector_field=vector_field
@@ -24,6 +24,7 @@ class Interpolant(torch.nn.Module):
         self.graph=None
         self.scaling=scaling
         self.ot=ot
+        self.endpoint=endpoint
 
     def alpha(self,t):
         if self.interpolant_type=='linear':
@@ -72,14 +73,15 @@ class Interpolant(torch.nn.Module):
         sigma_t_dot_extended=sigma_t_dot_extended.view(-1,1)
         coords_prior = torch.randn_like(g.ndata['x'])
         coords_shape=g.ndata['x'].shape
+        coords_sample=g.ndata['x']
         if self.ot:
-            coords_sample=g.ndata['x']
             coords_prior=coords_prior.view(-1,self.dim)
             coords_sample=coords_sample.view(-1,self.dim)
             row_ind, col_ind = self.OT_coupling(coords_sample,coords_prior)
             coords_prior=coords_prior[col_ind]
             coords_prior=coords_prior.view(coords_shape)
             coords_sample=coords_sample.view(coords_shape)
+        g.ndata['x0']=coords_sample.clone()
         g.ndata['x1']=coords_prior
         g.ndata['xt'] = alpha_t_extended*g.ndata['x'] + sigma_t_extended*g.ndata['x1']
         g.ndata['v'] = alpha_t_dot_extended*g.ndata['x'] + sigma_t_dot_extended*g.ndata['x1']
@@ -139,6 +141,27 @@ class Interpolant(torch.nn.Module):
             velocity=self.velocity_from_score(t,x,position_score)
         return velocity
     
+    def ode_endpoint_forward(self,t,x_tuple):
+        print(t)
+        x1=x_tuple[0].clone().detach()
+        xt=x_tuple[1].clone().detach()
+        coordinates=xt
+        coordinates=coordinates.view(-1,self.n_dimensions)
+        self.graph.ndata['x']=coordinates
+        t_clone=t.clone().detach()
+        t_clone=t_clone*torch.ones((self.graph.batch_size,1)).to('cuda')
+        x0=self.vector_field(t_clone,self.graph)
+        sigma_t_dot=self.sigma_dot(t_clone)
+        alpha_t_dot=self.alpha_dot(t_clone)
+        x1=x1.view(-1,self.dim)
+        x0=x0.view(-1,self.dim)
+        velocity= alpha_t_dot*x1 + sigma_t_dot*x0
+        x1_update = torch.zeros_like(x1)
+        return (x1_update,velocity)
+
+        
+
+    
     def ode_divergence_forward(self,t,x_log_prob_tuple):
         x=x_log_prob_tuple[0].clone().detach()
         log_prob=x_log_prob_tuple[1]
@@ -193,7 +216,11 @@ class Interpolant(torch.nn.Module):
         if self.vector_field is not None:
             tmax=1.0
         t = torch.linspace(tmax, 0., 100).to('cuda')
-        x=torchdiffeq.odeint_adjoint(self.ode_forward, x_init, t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+        if self.endpoint:
+            x_init=self.graph.ndata['x']
+            x_init,x = torchdiffeq.odeint_adjoint(self.ode_endpoint_forward, (x_init,x_init), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+        else:
+            x=torchdiffeq.odeint_adjoint(self.ode_forward, x_init, t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
         return x[-1]
     
     @torch.no_grad()

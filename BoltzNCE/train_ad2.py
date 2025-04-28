@@ -49,10 +49,15 @@ def parse_arguments():
 
     training_group=p.add_argument_group('training')
     training_group.add_argument('--num_epochs', type=int,required=False, default=1000)
-    training_group.add_argument('--window_size', type=float,required=False, default=0.025)
-    training_group.add_argument('--num_negatives', type=int,required=False, default=1)
-    training_group.add_argument('--nce_weight', type=float,required=False, default=1.0)
     training_group.add_argument('--grad_norm', type=float,required=False, default=None)
+
+    train_potential_group=p.add_argument_group('train_potential')
+    train_potential_group.add_argument('--window_size', type=float,required=False, default=0.025)
+    train_potential_group.add_argument('--num_negatives', type=int,required=False, default=1)
+    train_potential_group.add_argument('--nce_weight', type=float,required=False, default=1.0)
+
+    train_vector_group=p.add_argument_group('train_vector')
+    train_vector_group.add_argument('--endpoint', type=bool,required=False, default=False)
 
     optimizer_group=p.add_argument_group('optimizer')
     optimizer_group.add_argument('--lr', type=float,required=False, default=1e-3)
@@ -119,12 +124,12 @@ def merge_model_args(args):
     args['interpolant']['dim']=args['dim']
     #TODO: seperate out interpolant and dataloader scaling
     args['interpolant']['scaling']=args['dataloader']['scaling']
+    args['interpolant']['endpoint']=args['train_vector']['endpoint']
     return args
 
 
 
-def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,window_size,num_negatives, nce_weight,grad_norm):
-    #hardcoding arguments for now
+def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint):
     if args['ema']:
         ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
     for epoch in tqdm.tqdm(range(num_epochs)):
@@ -137,7 +142,10 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
             sigma_t=interpolant_obj.sigma(t)
             sigma_t=sigma_t.view(-1,1)
             g=interpolant_obj.get_xt_and_vt(t,g)
-            vector_target=g.ndata['v']
+            if endpoint:
+                vector_target=g.ndata['x0']
+            else:
+                vector_target=g.ndata['v']
             vector_target=vector_target.view(-1,interpolant_obj.dim)
             vector=vector_model(t,g)
             vector=vector.view(-1,interpolant_obj.dim)
@@ -241,7 +249,7 @@ if __name__ == "__main__":
     scheduler_vector=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_vector,**args['scheduler'])
 
     if args['model_type']=='vector_field':
-        vector_field=train_vector_field(args, dataloader,interpolant_obj, vector_field , optim_vector, scheduler_vector,**args['training'])
+        vector_field=train_vector_field(args, dataloader,interpolant_obj, vector_field , optim_vector, scheduler_vector,**args['training'],**args['train_vector'])
         torch.save(vector_field.state_dict(), args['save_vector_field_checkpoint'])
         interpolant_obj.vector_field=vector_field
 
@@ -249,7 +257,7 @@ if __name__ == "__main__":
         #TODO hardcoded arguments for now
         samples_np,_=gen_samples(n_samples=500,n_sample_batches=200,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
         h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(dataset=torch.from_numpy(samples_np).float(),**args['dataloader'])
-        potential_model=train_potential(args, dataloader,interpolant_obj, potential_model , optim_potential, scheduler_potential,**args['training'])
+        potential_model=train_potential(args, dataloader,interpolant_obj, potential_model , optim_potential, scheduler_potential,**args['training'],**args['train_potential'])
         torch.save(potential_model.state_dict(), args['save_potential_checkpoint']) 
         interpolant_obj.potential_function=potential_model
     else:
