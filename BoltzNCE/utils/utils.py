@@ -1,11 +1,14 @@
 import torch
-from models.ebm import GVP_EBM
+from models.ebm import GVP_EBM, graphormer_EBM
 from models.vector_field import GVP_vector_field
 from models.interpolant import Interpolant
 
 
 def load_models(args,h_initial):
-    potential_model=GVP_EBM(**args['potential_model'],**args['gvp']).cuda()
+    if args['potential_type'] == 'gvp':
+        potential_model=GVP_EBM(**args['potential_model'],**args['gvp']).cuda()
+    elif args['potential_type'] == 'graphormer':
+        potential_model=graphormer_EBM(**args['potential_model'],**args['graphormer']).cuda()
     pytorch_total_params = sum(p.numel() for p in potential_model.parameters())
     print(f"Total number of parameters in potential model: {pytorch_total_params}")
     if args['load_potential_checkpoint'] is not None:

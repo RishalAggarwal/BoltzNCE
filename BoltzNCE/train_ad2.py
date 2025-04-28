@@ -36,6 +36,7 @@ def parse_arguments():
     p.add_argument('--save_vector_field_checkpoint', type=str,required=False, default=None)
     p.add_argument('--config_save_name', type=str,required=False, default='./saved_models/default_config.yaml')
     p.add_argument('--model_type', type=str,required=False, default='vector_field')
+    p.add_argument('--potential_type', type=str,required=False, default='gvp')
     p.add_argument('--optimizer_type', type=str,required=False, default='adam')
     p.add_argument('--ema', type=bool,required=False, default=False)
 
@@ -51,6 +52,7 @@ def parse_arguments():
     training_group.add_argument('--window_size', type=float,required=False, default=0.025)
     training_group.add_argument('--num_negatives', type=int,required=False, default=1)
     training_group.add_argument('--nce_weight', type=float,required=False, default=1.0)
+    training_group.add_argument('--grad_norm', type=float,required=False, default=None)
 
     optimizer_group=p.add_argument_group('optimizer')
     optimizer_group.add_argument('--lr', type=float,required=False, default=1e-3)
@@ -71,7 +73,16 @@ def parse_arguments():
     potential_group=p.add_argument_group('potential_model')
     potential_group.add_argument('--num_layers', type=int,required=False, default=8)
     
-    
+    graphormer_group=p.add_argument_group('graphormer')
+    graphormer_group.add_argument('--embed_dim', type=int,required=False, default=128)
+    graphormer_group.add_argument('--ffn_embed_dim', type=int,required=False, default=128)
+    graphormer_group.add_argument('--attention_heads', type=int,required=False, default=32)
+    graphormer_group.add_argument('--dropout', type=float,required=False, default=0.1)
+    graphormer_group.add_argument('--attention_dropout', type=float,required=False, default=0.1)
+    graphormer_group.add_argument('--input_dropout', type=float,required=False, default=0.1)
+    graphormer_group.add_argument('--num_kernel', type=int,required=False, default=50)
+    graphormer_group.add_argument('--blocks', type=int,required=False, default=3)
+
 
     vector_field_group=p.add_argument_group('vector_field_model')
     vector_field_group.add_argument('--n_layers', type=int,required=False, default=5)
@@ -112,7 +123,7 @@ def merge_model_args(args):
 
 
 
-def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,window_size,num_negatives, nce_weight):
+def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,window_size,num_negatives, nce_weight,grad_norm):
     #hardcoding arguments for now
     if args['ema']:
         ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
@@ -134,6 +145,8 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
             if args['wandb']:
                 wandb.log({"vector_loss": loss_vector.item()})
             loss_vector.backward()
+            if grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(vector_model.parameters(), grad_norm)
             optim_vector.step()
             if args['ema']:
                 ema.update()
@@ -144,7 +157,7 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
         vector_model=ema.ema_model
     return vector_model
 
-def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpolant, potential_model: GVP_EBM, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float=1.0):
+def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpolant, potential_model: GVP_EBM, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float,grad_norm: float):
     #hardcoding arguments for now
     if args['ema']:
         ema = EMA(potential_model, beta=0.999, allow_different_devices = True)
@@ -171,10 +184,10 @@ def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpola
             else:
                 t_negative=torch.rand(batch_size,num_negatives).cuda()
             t_negative=torch.clamp(t_negative,0,1)
-            t_negative=t_negative.view(-1,1)
+            t_negative=t_negative.transpose(0,1).reshape(-1,1)
             large_g=dgl.batch([g]* num_negatives)
             ll_negatives=potential_model(t_negative,large_g,return_logprob=True)
-            ll_negatives=ll_negatives.view(-1,num_negatives)
+            ll_negatives=ll_negatives.view(num_negatives,-1).transpose(0,1)
             loss_nce=-torch.mean(ll_positives-torch.logsumexp(torch.cat([ll_negatives,ll_positives],dim=1),dim=1).view(-1,1))
             loss=loss_score + nce_weight*loss_nce
             if args['wandb']:
@@ -182,6 +195,8 @@ def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpola
                 wandb.log({"potential_score_loss": loss_score.item()})
                 wandb.log({"potential_nce_loss": loss_nce.item()})
             loss.backward()
+            if grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(potential_model.parameters(), grad_norm)
             optim_potential.step()
             if args['ema']:
                 ema.update()
