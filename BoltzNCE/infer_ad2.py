@@ -28,6 +28,9 @@ def parse_arguments():
     p =argparse.ArgumentParser()
     p.add_argument('--config', type=str, default=None)
     p.add_argument('--MCMC',type=bool, default=False)
+    p.add_argument('--MCMC_steps',type=int, default=500)
+    p.add_argument("--divergence", action="store_true",default=True)
+    p.add_argument("--no-divergence", action="store_false", dest="divergence")
     p.add_argument('--weight_threshold', type=float, default=0.2)
     p.add_argument('--n_samples', type=int, default=500)
     p.add_argument('--n_sample_batches', type=int, default=200)
@@ -309,34 +312,33 @@ if __name__== "__main__":
     potential_model.eval()
     vector_field.eval()
 
-
     if args['model_type']=='vector_field':
-        samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type='ode_divergence',n_timesteps=1000)
-        wandb.log({"NLL_mean": -dlogf_np.mean()})
-        wandb.log({"NLL_std": -dlogf_np.std()})
+        integral_type='ode'
+        if args['divergence']==True:
+            integral_type='ode_divergence'
+        samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type,n_timesteps=1000)
+        if args['divergence']:
+            wandb.log({"NLL_mean": -dlogf_np.mean()})
+            wandb.log({"NLL_std": -dlogf_np.std()})
         energies_np,energies_data_holdout=get_energies(samples_np)
-        log_w_np=get_importance_weights(dlogf_np,energies_np)
+        log_w_np=np.zeros((len(samples_np),1))
+        if args['divergence']:
+            log_w_np=get_importance_weights(dlogf_np,energies_np)
         samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=0)
         get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
     elif args['model_type']=='potential':
         samples_np,_=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
+        if args['MCMC']:
+            time_start = time.time()
+            samples_np=interpolant_obj.simulate(samples_np,steps=args['MCMC_steps'],step_size=2e-4,simulation_fn=interpolant_obj.MALA_steps)
+            time_end=time.time()
+            wandb.log({"MCMC time": time_end - time_start})
+            print(time_end - time_start)
         energies_np,energies_data_holdout=get_energies(samples_np)
         dlogf_np=get_potential_logp(interpolant_obj,samples_np)
         log_w_np=get_importance_weights(dlogf_np,energies_np)
         samples_np_05,energies_np_05,log_w_np_05=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
         get_ramachandran_and_free_energy(samples_np_05,energies_np_05,log_w_np_05)
-        if args['MCMC']:
-            time_start = time.time()
-            samples_np=interpolant_obj.simulate(samples_np,steps=500,step_size=2e-4,simulation_fn=interpolant_obj.MALA_steps)
-            time_end=time.time()
-            wandb.log({"MCMC time": time_end - time_start})
-            print(time_end - time_start)
-            energies_np,_=get_energies(samples_np,energies_holdout=False)
-            dlogf_np=get_potential_logp(interpolant_obj,samples_np)
-            log_w_np=get_importance_weights(dlogf_np,energies_np)
-            samples_np_05,energies_np_05,log_w_np_05=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
-            get_ramachandran_and_free_energy(samples_np_05,energies_np_05,log_w_np_05)
-
     else:
         raise ValueError("Model type not recognized")
 

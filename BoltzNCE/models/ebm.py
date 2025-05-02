@@ -12,7 +12,9 @@ class GVP_EBM(torch.nn.Module):
         self.n_vec_channels=n_vec
         self.initial_embedding = torch.nn.Sequential(torch.nn.Linear(n_features+1, n_hidden),nn.SiLU())
         self.convs=torch.nn.ModuleList([GVPConv(scalar_size=n_hidden,vector_size=n_vec,n_message_gvps=n_message_gvps,n_update_gvps=n_update_gvps,use_dst_feats=use_dst_feats,vector_gating=vector_gating,coords_range=10,scalar_activation=SwishBeta) for _ in range(num_layers)]) 
-        self.output = torch.nn.Linear(n_hidden, 1,bias=True)
+        self.output = torch.nn.Sequential(torch.nn.Linear(n_hidden, n_hidden,bias=True), 
+                                          nn.SiLU(),
+                                          torch.nn.Linear(n_hidden, 1,bias=True))
         self.num_particles=num_particles
 
     def forward(self,t,data,return_logprob=False, require_grad=False):

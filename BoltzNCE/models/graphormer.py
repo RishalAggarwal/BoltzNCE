@@ -108,15 +108,16 @@ class Graphormer3DEncoderLayer(nn.Module):
     def forward(
         self,
         x: Tensor,
-        gbf_feature: Tensor = None,
-        padding_mask: Tensor = None,
+        #gbf_feature: Tensor = None,
+        #padding_mask: Tensor = None,
+        attn_bias: Tensor = None,
     ):
         residual = x
         n_node, n_graph, embed_dim = x.size()
         x = self.self_attn_layer_norm(x)
-        attn_bias = self.bias_proj(gbf_feature).permute(0, 3, 1, 2)
+        '''attn_bias = self.bias_proj(gbf_feature).permute(0, 3, 1, 2)
         attn_bias.masked_fill_(padding_mask.unsqueeze(1).unsqueeze(2), float("-inf"))
-        attn_bias = attn_bias.reshape(-1, n_node, n_node)
+        attn_bias = attn_bias.reshape(-1, n_node, n_node)'''
         x = self.self_attn(
             query=x,
             attn_bias=attn_bias,
@@ -131,7 +132,8 @@ class Graphormer3DEncoderLayer(nn.Module):
         x = self.fc2(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
-        return x,attn_bias
+        #return x,attn_bias
+        return x
 
 
 class GaussianLayer(nn.Module):
@@ -277,7 +279,7 @@ class Graphormer3D(nn.Module):
         #nn.init.normal_(self.energy_agg_factor.weight, 0, 0.01)
 
         self.gbf = GaussianLayer(num_kernel, self.edge_types)
-        #self.bias_proj = NonLinear(num_kernel, attention_heads)
+        self.bias_proj = NonLinear(num_kernel, attention_heads)
         self.edge_proj = nn.Linear(num_kernel, embed_dim)
 
     def forward(self, atoms, pos,time):
@@ -295,13 +297,14 @@ class Graphormer3D(nn.Module):
         node_features = self.atom_encoder(atoms) + self.edge_proj(edge_features.sum(dim=-2)) + self.time_encoder(time)
         output = F.dropout(node_features, p=self.input_dropout, training=self.training).transpose(0, 1)
 
-        '''graph_attn_bias = self.bias_proj(gbf_feature).permute(0, 3, 1, 2)
+        graph_attn_bias = self.bias_proj(gbf_feature).permute(0, 3, 1, 2)
         graph_attn_bias.masked_fill_(padding_mask.unsqueeze(1).unsqueeze(2), float("-inf"))
-        graph_attn_bias = graph_attn_bias.reshape(-1, n_node, n_node)'''
+        graph_attn_bias = graph_attn_bias.reshape(-1, n_node, n_node)
 
         for _ in range(self.blocks):
             for i in range(len(self.layers)):
-                output,graph_attn_bias = self.layers[i](output, gbf_feature, padding_mask)
+                #output,graph_attn_bias = self.layers[i](output, gbf_feature, padding_mask)
+                output= self.layers[i](output, graph_attn_bias)
                 '''output_for_force = output.transpose(0, 1)
                 #graph_attn_bias_for_force = graph_attn_bias * real_mask.unsqueeze(1).unsqueeze(2)
                 cur_force = self.bias_updates[i](output_for_force, graph_attn_bias, delta_pos)

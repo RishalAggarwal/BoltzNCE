@@ -58,6 +58,7 @@ def parse_arguments():
 
     train_vector_group=p.add_argument_group('train_vector')
     train_vector_group.add_argument('--endpoint', type=bool,required=False, default=False)
+    train_vector_group.add_argument('--self_conditioning', type=bool,required=False, default=False)
 
     optimizer_group=p.add_argument_group('optimizer')
     optimizer_group.add_argument('--lr', type=float,required=False, default=1e-3)
@@ -125,11 +126,13 @@ def merge_model_args(args):
     #TODO: seperate out interpolant and dataloader scaling
     args['interpolant']['scaling']=args['dataloader']['scaling']
     args['interpolant']['endpoint']=args['train_vector']['endpoint']
+    args['vector_field_model']['self_conditioning']=args['train_vector']['self_conditioning']
+    args['interpolant']['self_conditioning']=args['train_vector']['self_conditioning']
     return args
 
 
 
-def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint):
+def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint,self_conditioning):
     if args['ema']:
         ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
     for epoch in tqdm.tqdm(range(num_epochs)):
@@ -144,12 +147,23 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
             g=interpolant_obj.get_xt_and_vt(t,g)
             if endpoint:
                 vector_target=g.ndata['x0']
+                alpha_t=interpolant_obj.alpha(t).view(-1,1)
+                alpha_dot_t=interpolant_obj.alpha_dot(t).view(-1,1)
+                time_weight=torch.min(torch.max(torch.tensor([0.005]).to(alpha_t.device),torch.abs((alpha_dot_t*sigma_t - alpha_t)/sigma_t)),torch.tensor([1.5]).to(alpha_t.device)).view(-1,1)
+                vector_target=vector_target.view(-1,interpolant_obj.dim)
+                if self_conditioning and torch.rand(1).item() < 0.5:
+                    with torch.no_grad():
+                        vector_condition=vector_model(t,g)
+                    vector=vector_model(t,g,condition=vector_condition)
+                else:
+                    vector=vector_model(t,g)
             else:
                 vector_target=g.ndata['v']
-            vector_target=vector_target.view(-1,interpolant_obj.dim)
-            vector=vector_model(t,g)
+                vector=vector_model(t,g)
+                time_weight=torch.ones_like(t)
             vector=vector.view(-1,interpolant_obj.dim)
-            loss_vector=torch.mean((vector - vector_target)**2)
+            time_weight=time_weight.to(device=vector.device)
+            loss_vector=torch.mean(time_weight*(vector - vector_target)**2)
             if args['wandb']:
                 wandb.log({"vector_loss": loss_vector.item()})
             loss_vector.backward()

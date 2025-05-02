@@ -8,7 +8,7 @@ from scipy.optimize import linear_sum_assignment
 
 
 class Interpolant(torch.nn.Module):
-    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False,endpoint=False):
+    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False,endpoint=False,self_conditioning=False):
         super().__init__()
         self.potential_function = potential_function
         self.vector_field=vector_field
@@ -25,6 +25,7 @@ class Interpolant(torch.nn.Module):
         self.scaling=scaling
         self.ot=ot
         self.endpoint=endpoint
+        self.self_conditioning=self_conditioning
 
     def alpha(self,t):
         if self.interpolant_type=='linear':
@@ -142,7 +143,6 @@ class Interpolant(torch.nn.Module):
         return velocity
     
     def ode_endpoint_forward(self,t,x_tuple):
-        print(t)
         x1=x_tuple[0].clone().detach()
         xt=x_tuple[1].clone().detach()
         coordinates=xt
@@ -215,10 +215,10 @@ class Interpolant(torch.nn.Module):
         tmax=0.999
         if self.vector_field is not None:
             tmax=1.0
-        t = torch.linspace(tmax, 0., 100).to('cuda')
+        t = torch.linspace(tmax, 0., 1000).to('cuda')
         if self.endpoint:
             x_init=self.graph.ndata['x']
-            x_init,x = torchdiffeq.odeint_adjoint(self.ode_endpoint_forward, (x_init,x_init), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+            x_init,x = torchdiffeq.odeint_adjoint(self.ode_endpoint_forward, (x_init,x_init), t, method='euler',atol=1e-5,rtol=1e-5,adjoint_params=())
         else:
             x=torchdiffeq.odeint_adjoint(self.ode_forward, x_init, t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
         return x[-1]
