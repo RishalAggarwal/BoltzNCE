@@ -142,22 +142,26 @@ class Interpolant(torch.nn.Module):
             velocity=self.velocity_from_score(t,x,position_score)
         return velocity
     
-    def ode_endpoint_forward(self,t,x_tuple):
-        x1=x_tuple[0].clone().detach()
-        xt=x_tuple[1].clone().detach()
+    def ode_endpoint_forward(self,t,x):
+        xt=x
         coordinates=xt
         coordinates=coordinates.view(-1,self.n_dimensions)
         self.graph.ndata['x']=coordinates
-        t_clone=t.clone().detach()
+        t_clone=t
         t_clone=t_clone*torch.ones((self.graph.batch_size,1)).to('cuda')
-        x0=self.vector_field(t_clone,self.graph)
+        condition=None
+        if self.self_conditioning:
+            with torch.no_grad():
+                condition=self.vector_field(t_clone,self.graph)
+        x0=self.vector_field(t_clone,self.graph,condition=condition)
         sigma_t_dot=self.sigma_dot(t_clone)
         alpha_t_dot=self.alpha_dot(t_clone)
-        x1=x1.view(-1,self.dim)
+        sigma_t=self.sigma(t_clone)
+        alpha_t=self.alpha(t_clone)
         x0=x0.view(-1,self.dim)
-        velocity= alpha_t_dot*x1 + sigma_t_dot*x0
-        x1_update = torch.zeros_like(x1)
-        return (x1_update,velocity)
+        xt=xt.view(-1,self.dim)
+        velocity= (1/sigma_t)*(sigma_t_dot*xt + alpha_t_dot*sigma_t*x0 - alpha_t*x0)
+        return velocity
 
         
 
@@ -170,8 +174,11 @@ class Interpolant(torch.nn.Module):
             self.graph.ndata['x']=x.view(-1,self.n_dimensions)
             t_clone=t.clone()
             t_clone=t_clone*torch.ones((self.graph.batch_size,1)).to('cuda')
-            velocity=self.vector_field(t_clone,self.graph)
-            velocity=velocity.view(-1,self.dim)
+            if not self.endpoint:
+                velocity=self.vector_field(t_clone,self.graph)
+                velocity=velocity.view(-1,self.dim)
+            else:
+                velocity=self.ode_endpoint_forward(t,x)
             #compute dlogp
             dlogp=torch.zeros((x.shape[0])).to(x.device)
             for i in range(self.dim):
@@ -212,15 +219,11 @@ class Interpolant(torch.nn.Module):
         self.setup_graph(n_samples)
         x_init=self.prior.sample((n_samples,)).to('cuda')
         self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
-        tmax=0.999
-        if self.vector_field is not None:
-            tmax=1.0
-        t = torch.linspace(tmax, 0., 1000).to('cuda')
+        t = self.get_timespan()
+        forward_fn=self.ode_forward
         if self.endpoint:
-            x_init=self.graph.ndata['x']
-            x_init,x = torchdiffeq.odeint_adjoint(self.ode_endpoint_forward, (x_init,x_init), t, method='euler',atol=1e-5,rtol=1e-5,adjoint_params=())
-        else:
-            x=torchdiffeq.odeint_adjoint(self.ode_forward, x_init, t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+            forward_fn=self.ode_endpoint_forward
+        x=torchdiffeq.odeint_adjoint(forward_fn, x_init, t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
         return x[-1]
     
     @torch.no_grad()
@@ -231,12 +234,19 @@ class Interpolant(torch.nn.Module):
         x_init=x_init.to('cuda')
         log_prob_init=log_prob_init.to('cuda')
         self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
+        t=self.get_timespan()
+        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,log_prob_init), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+        return x[-1],log_prob[-1]
+    
+    def get_timespan(self):
         tmax=0.999
         if self.vector_field is not None:
             tmax=1.0
-        t = torch.linspace(tmax, 0., 100).to('cuda')
-        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,log_prob_init), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
-        return x[-1],log_prob[-1]
+        tmin=0.0
+        if self.endpoint:
+            tmin=0.001
+        t = torch.linspace(tmax, tmin, 100).to('cuda')
+        return t
     
     def setup_graph(self,batch_size):
         if (self.graph is not None) and (self.graph.batch_size==batch_size):
