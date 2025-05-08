@@ -342,9 +342,11 @@ if __name__== "__main__":
         args['divergence']=False
 
     if args['model_type']=='vector_field':
-        #nll_samples=torch.from_numpy(np.load("../data/AD2_relaxed_holdout.npy")).reshape(-1, 66).float()[::100]
-        #nll_samples=remove_mean(nll_samples,n_particles=num_particles,n_dimensions=n_dimensions)
-        #nll_np=compute_nll(interpolant_obj,nll_samples)
+        nll_samples=torch.from_numpy(np.load("../data/AD2_relaxed_holdout.npy")).reshape(-1, 66).float()
+        #sample 1000 samples randomly from the dataset
+        nll_samples=nll_samples[torch.randint(0, len(nll_samples), (1000,))]
+        nll_samples=remove_mean(nll_samples,n_particles=num_particles,n_dimensions=n_dimensions)
+        nll_np=compute_nll(interpolant_obj,nll_samples)
         samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type,n_timesteps=1000)
         if args['divergence']:
             wandb.log({"NLL_mean": -dlogf_np.mean()})
