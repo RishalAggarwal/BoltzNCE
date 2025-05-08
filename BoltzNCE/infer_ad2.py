@@ -36,6 +36,8 @@ def parse_arguments():
     p.add_argument('--n_samples', type=int, default=500)
     p.add_argument('--n_sample_batches', type=int, default=200)
     p.add_argument('--wandb_inference_name', type=str, default=None)
+    p.add_argument('--save_generated',type='store_true', default=False)
+    p.add_argument('--save_prefix',type=str, default='./generated/')
     args=p.parse_args()
     return args,p
 
@@ -356,8 +358,6 @@ if __name__== "__main__":
         if args['divergence']:
             log_w_np=get_importance_weights(dlogf_np,energies_np)
             
-        samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=0)
-        get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
 
     elif args['model_type']=='potential':
         samples_np,_=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type,n_timesteps=1000)
@@ -370,10 +370,14 @@ if __name__== "__main__":
         energies_np,energies_data_holdout=get_energies(samples_np)
         dlogf_np=get_potential_logp(interpolant_obj,samples_np)
         log_w_np=get_importance_weights(dlogf_np,energies_np)
-        samples_np_05,energies_np_05,log_w_np_05=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
-        get_ramachandran_and_free_energy(samples_np_05,energies_np_05,log_w_np_05)
+        
     else:
         raise ValueError("Model type not recognized")
 
+    samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
+    get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
+    if args['save_generated']:
+        np.save(args['save_prefix'] + 'samples.npy', samples_np)
+        np.save(args['save_prefix'] + 'log_w.npy', log_w_np)
 
     
