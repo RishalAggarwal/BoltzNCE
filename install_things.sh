@@ -4,11 +4,11 @@ pip install einops
 mamba install pytorch=2.2.1 torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia -y
 pip install torch-cluster -f https://data.pyg.org/whl/torch-2.2.1+cu121.html
 pip install torch-scatter -f https://data.pyg.org/whl/torch-2.1.0+cu121.html
-mamba install matploitlib -y
+mamba install matplotlib -y
 mamba install -c dglteam/label/th22_cu121 dgl -y
 mamba install -c conda-forge wandb -y
 mamba install -c conda-forge fsspec -y
-pip install torchdata=0.7.1
+pip install torchdata==0.7.1
 mamba install -c conda-forge mdtraj=1.9.9 -y
 mamba install -c conda-forge openmm=8.1.1 cuda-version=12.1 -y
 mamba install openmmtools -y

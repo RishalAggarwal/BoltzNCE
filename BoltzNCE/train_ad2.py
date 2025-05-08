@@ -59,6 +59,7 @@ def parse_arguments():
     train_vector_group=p.add_argument_group('train_vector')
     train_vector_group.add_argument('--endpoint', type=bool,required=False, default=False)
     train_vector_group.add_argument('--self_conditioning', type=bool,required=False, default=False)
+    train_vector_group.add_argument('--tweight_max', type=float,required=False, default=1.5)
 
     optimizer_group=p.add_argument_group('optimizer')
     optimizer_group.add_argument('--lr', type=float,required=False, default=1e-3)
@@ -132,7 +133,7 @@ def merge_model_args(args):
 
 
 
-def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint,self_conditioning):
+def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint,self_conditioning,tweight_max):
     if args['ema']:
         ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
     for epoch in tqdm.tqdm(range(num_epochs)):
@@ -149,7 +150,7 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
                 vector_target=g.ndata['x0']
                 alpha_t=interpolant_obj.alpha(t).view(-1,1)
                 alpha_dot_t=interpolant_obj.alpha_dot(t).view(-1,1)
-                time_weight=torch.min(torch.max(torch.tensor([0.005]).to(alpha_t.device),torch.abs((alpha_dot_t*sigma_t - alpha_t)/sigma_t)),torch.tensor([1.5]).to(alpha_t.device)).view(-1,1)
+                time_weight=torch.min(torch.max(torch.tensor([0.005]).to(alpha_t.device),torch.abs((alpha_dot_t*sigma_t - alpha_t)/sigma_t)),torch.tensor([tweight_max]).to(alpha_t.device)).view(-1,1)
                 vector_target=vector_target.view(-1,interpolant_obj.dim)
                 if self_conditioning and torch.rand(1).item() < 0.5:
                     with torch.no_grad():

@@ -6,7 +6,7 @@ import dgl
 from bgflow.utils import remove_mean
 from bgflow.utils import distances_from_vectors
 from bgflow.utils import distance_vectors, as_numpy
-from bgflow.bg import sampling_efficiency,unormalized_nll
+from bgflow.bg import sampling_efficiency,unormalized_nll,effective_sample_size
 from bgflow import XTBEnergy, XTBBridge
 from models.interpolant import Interpolant
 from models.ebm import GVP_EBM
@@ -31,6 +31,7 @@ def parse_arguments():
     p.add_argument('--MCMC_steps',type=int, default=500)
     p.add_argument("--divergence", action="store_true",default=True)
     p.add_argument("--no-divergence", action="store_false", dest="divergence")
+    p.add_argument("--SDE", action="store_true", default=False)
     p.add_argument('--weight_threshold', type=float, default=0.2)
     p.add_argument('--n_samples', type=int, default=500)
     p.add_argument('--n_sample_batches', type=int, default=200)
@@ -99,7 +100,6 @@ def get_energies(samples,energies_holdout=True):
         XTBBridge(numbers=numbers, temperature=temperature, solvent="water"),
         two_event_dims=False
     )
-    energy_offset = 34600
     energies_np = as_numpy(target_xtb.energy(torch.from_numpy(samples)/scaling))
     energy_offset = 34600
     energies_np += energy_offset
@@ -132,12 +132,35 @@ def get_potential_logp(model: Interpolant,samples):
     dlogf_np=dlogf_all.cpu().detach().numpy()
     return dlogf_np
 
+def compute_nll(model: Interpolant,samples_torch):
+    samples_torch = samples_torch/model.scaling
+    batch_size=200
+    i=0
+    nll_all=[]
+    while (i+batch_size)<len(samples_torch):
+        samples_prob=samples_torch[i:i+batch_size]
+        nll=model.NLL_integral(samples_prob)
+        nll_all.append(nll.cpu().detach())
+        i=i+batch_size
+    samples_prob=samples_torch[i:len(samples_torch)]
+    nll=model.NLL_integral(samples_prob)
+    nll_all.append(nll.cpu().detach())
+    nll_all=torch.cat(nll_all,dim=0)
+    wandb.log({"vector_NLL_mean": -nll_all.mean()})
+    wandb.log({"vector_NLL_std": -nll_all.std()})
+    nll_np=nll_all.cpu().detach().numpy()
+    return nll_np
+
 def get_importance_weights(dlogf_np,energies_np):
     energies_torch=torch.tensor(-energies_np)
-    energies_torch=energies_torch - torch.logsumexp(energies_torch,dim=(0,1))
     energies_w=energies_torch.numpy()
+    #energies_torch=energies_torch - torch.logsumexp(energies_torch,dim=(0,1))
+    #energies_w=energies_torch.numpy()
     log_w_np = as_numpy(energies_w).reshape(-1,1) - dlogf_np.reshape(-1,1)
     wandb.log({"Sampling efficiency Mean": sampling_efficiency(torch.from_numpy(log_w_np)).item()})
+    log_w_torch=torch.tensor(log_w_np)
+    log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
+    log_w_np=log_w_torch.numpy()
     return log_w_np
 
 def plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=0,prefix=''):
@@ -311,11 +334,17 @@ if __name__== "__main__":
     potential_model, vector_field, interpolant_obj = load_models(args,h_initial)
     potential_model.eval()
     vector_field.eval()
+    integral_type='ode'
+    if args['divergence']==True:
+        integral_type='ode_divergence'
+    if args['SDE']:
+        integral_type='sde'
+        args['divergence']=False
 
     if args['model_type']=='vector_field':
-        integral_type='ode'
-        if args['divergence']==True:
-            integral_type='ode_divergence'
+        #nll_samples=torch.from_numpy(np.load("../data/AD2_relaxed_holdout.npy")).reshape(-1, 66).float()[::100]
+        #nll_samples=remove_mean(nll_samples,n_particles=num_particles,n_dimensions=n_dimensions)
+        #nll_np=compute_nll(interpolant_obj,nll_samples)
         samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type,n_timesteps=1000)
         if args['divergence']:
             wandb.log({"NLL_mean": -dlogf_np.mean()})
@@ -324,10 +353,12 @@ if __name__== "__main__":
         log_w_np=np.zeros((len(samples_np),1))
         if args['divergence']:
             log_w_np=get_importance_weights(dlogf_np,energies_np)
+            
         samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=0)
         get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
+
     elif args['model_type']=='potential':
-        samples_np,_=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
+        samples_np,_=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type,n_timesteps=1000)
         if args['MCMC']:
             time_start = time.time()
             samples_np=interpolant_obj.simulate(samples_np,steps=args['MCMC_steps'],step_size=2e-4,simulation_fn=interpolant_obj.MALA_steps)

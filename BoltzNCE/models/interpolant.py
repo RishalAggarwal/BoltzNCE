@@ -5,7 +5,7 @@ import numpy as np
 import tqdm
 import ot
 from scipy.optimize import linear_sum_assignment
-
+from bgflow.utils import remove_mean
 
 class Interpolant(torch.nn.Module):
     def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False,endpoint=False,self_conditioning=False):
@@ -106,7 +106,7 @@ class Interpolant(torch.nn.Module):
         return velocity
 
     def sde_w(self,t):
-        return torch.sin(torch.pi*t)**2
+        return self.sigma(t)
         
     
     def log_prob_forward(self,samples,time=0.0,torch_grad=False):
@@ -143,17 +143,19 @@ class Interpolant(torch.nn.Module):
         return velocity
     
     def ode_endpoint_forward(self,t,x):
+        condition=None
+        if self.self_conditioning and t<1:
+            condition=self.graph.ndata['x0']
+            condition=condition.view(-1,self.n_dimensions)
         xt=x
-        coordinates=xt
+        coordinates=xt.clone().detach()
         coordinates=coordinates.view(-1,self.n_dimensions)
         self.graph.ndata['x']=coordinates
         t_clone=t
         t_clone=t_clone*torch.ones((self.graph.batch_size,1)).to('cuda')
-        condition=None
-        if self.self_conditioning:
-            with torch.no_grad():
-                condition=self.vector_field(t_clone,self.graph)
         x0=self.vector_field(t_clone,self.graph,condition=condition)
+        if self.self_conditioning:
+            self.graph.ndata['x0']=x0
         sigma_t_dot=self.sigma_dot(t_clone)
         alpha_t_dot=self.alpha_dot(t_clone)
         sigma_t=self.sigma(t_clone)
@@ -187,30 +189,44 @@ class Interpolant(torch.nn.Module):
 
 
     def sde_forward(self,t,x):
-        position_score=self.score(t,x)
-        if self.vector_field is not None:
-            velocity=self.ode_forward(t,x)
-            velocity=velocity.view(-1,self.dim)
-        else:
-            velocity=self.velocity_from_score(t,x,position_score)
-        velocity=self.velocity_from_score(t,x,position_score)
-        sde_weight=self.sde_w(t).view(-1,1).to(x.device)
+        ode_fn=self.ode_forward
+        if self.endpoint:
+            ode_fn=self.ode_endpoint_forward
+        velocity=ode_fn(t,x)
+        position_score=self.score_from_velocity(t,x,velocity)
+        sde_weight=self.sde_w(t).view(-1,1).to(x.device) 
         drift = velocity - 0.5 * sde_weight * position_score
-        noise = torch.sqrt(sde_weight)*torch.randn_like(velocity)
+        noise=torch.randn_like(x)
+        noise=remove_mean(noise,n_particles=self.n_particles,n_dimensions=self.n_dimensions)
+        noise = noise.view(-1,self.dim)
+        noise = torch.sqrt(sde_weight)*noise
         return drift, noise
+    
+    def score_from_velocity(self,t,x,velocity):
+        alpha_t=self.alpha(t)
+        sigma_t=self.sigma(t)
+        sigma_t_dot=self.sigma_dot(t)
+        alpha_t_dot=self.alpha_dot(t)
+        mean = x
+        reverse_alpha_ratio = alpha_t / alpha_t_dot
+        var = sigma_t**2 - reverse_alpha_ratio * sigma_t_dot * sigma_t
+        score = (reverse_alpha_ratio * velocity - mean) / var
+        return score
     
 
     @torch.no_grad()
-    def sde_integral(self,n_samples,n_timesteps=200):
+    def sde_integral(self,n_samples,n_timesteps=1000):
         self.setup_graph(n_samples)
         x_init=self.prior.sample((n_samples,)).to('cuda')
         self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
-        timespan = torch.linspace(0.999,0.04,n_timesteps)
+        timespan = torch.linspace(1, 0.001, n_timesteps+1).to('cuda')
         samples=x_init
         dt=(timespan[1]-timespan[0]).view(-1,1).to(samples.device)
         for t in timespan:
             drift,noise=self.sde_forward(t,samples)
-            samples=samples + drift * dt + noise * torch.sqrt(torch.abs(dt))
+            samples=samples + drift*dt
+            if t!=timespan[-1]:
+                samples=samples + noise * torch.sqrt(torch.abs(dt))
         return samples
     
     
@@ -218,12 +234,16 @@ class Interpolant(torch.nn.Module):
     def ode_integral(self,n_samples):
         self.setup_graph(n_samples)
         x_init=self.prior.sample((n_samples,)).to('cuda')
+        x_hat=torch.zeros_like(x_init).to('cuda')
         self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
         t = self.get_timespan()
         forward_fn=self.ode_forward
+        method='dopri5'
         if self.endpoint:
             forward_fn=self.ode_endpoint_forward
-        x=torchdiffeq.odeint_adjoint(forward_fn, x_init, t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+            if self.self_conditioning:
+                method='euler'
+        x=torchdiffeq.odeint_adjoint(forward_fn, x_init, t, method=method,atol=1e-5,rtol=1e-5,adjoint_params=())
         return x[-1]
     
     @torch.no_grad()
@@ -232,20 +252,38 @@ class Interpolant(torch.nn.Module):
         x_init=self.prior.sample((n_samples,))
         log_prob_init=self.prior.log_prob(x_init).view(-1,1)
         x_init=x_init.to('cuda')
-        log_prob_init=log_prob_init.to('cuda')
+        log_prob_init=-0.5 * x_init.pow(2).sum(dim=-1, keepdim=True).to('cuda')
         self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
         t=self.get_timespan()
         x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,log_prob_init), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
         return x[-1],log_prob[-1]
     
-    def get_timespan(self):
+    @torch.no_grad()
+    def NLL_integral(self,x_init):
+        self.setup_graph(x_init.shape[0])
+        x_init=x_init.to('cuda')
+        self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
+        t=self.get_timespan()
+        t=t.__reversed__()
+        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,torch.zeros(x_init.shape[0]).to(x_init.device)), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+        x=x[-1]
+        x=x.cpu()
+        #x=remove_mean(x,n_particles=self.n_particles,n_dimensions=self.n_dimensions)
+        x=x.view(-1,self.dim)
+        log_prob_prior_unnormalized=-0.5 * x.pow(2).sum(dim=-1, keepdim=True).to('cuda')
+        log_prob_prior=self.prior.log_prob(x).view(-1,1)
+        log_prob_prior=log_prob_prior.to('cuda')
+        log_prob=log_prob_prior - log_prob[-1]
+        return log_prob
+    
+    def get_timespan(self,n_timesteps=200):
         tmax=0.999
         if self.vector_field is not None:
             tmax=1.0
         tmin=0.0
         if self.endpoint:
-            tmin=0.001
-        t = torch.linspace(tmax, tmin, 100).to('cuda')
+            tmin=1e-3
+        t = torch.linspace(tmax, tmin, n_timesteps).to('cuda')
         return t
     
     def setup_graph(self,batch_size):
