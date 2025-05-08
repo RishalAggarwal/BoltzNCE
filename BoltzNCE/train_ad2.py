@@ -151,7 +151,6 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
                 alpha_t=interpolant_obj.alpha(t).view(-1,1)
                 alpha_dot_t=interpolant_obj.alpha_dot(t).view(-1,1)
                 time_weight=torch.min(torch.max(torch.tensor([0.005]).to(alpha_t.device),torch.abs((alpha_dot_t*sigma_t - alpha_t)/sigma_t)),torch.tensor([tweight_max]).to(alpha_t.device)).view(-1,1)
-                vector_target=vector_target.view(-1,interpolant_obj.dim)
                 if self_conditioning and torch.rand(1).item() < 0.5:
                     with torch.no_grad():
                         vector_condition=vector_model(t,g)
@@ -162,6 +161,7 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
                 vector_target=g.ndata['v']
                 vector=vector_model(t,g)
                 time_weight=torch.ones_like(t)
+            vector_target=vector_target.view(-1,interpolant_obj.dim)
             vector=vector.view(-1,interpolant_obj.dim)
             time_weight=time_weight.to(device=vector.device)
             loss_vector=torch.mean(time_weight*(vector - vector_target)**2)
