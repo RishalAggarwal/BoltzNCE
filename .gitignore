@@ -8,7 +8,5 @@ BoltzNCE/AImplicitUnconstrained.tgz
 BoltzNCE/slurm-*
 BoltzNCE/wandb/
 BoltzNCE/saved_models/*
-BoltzNCE/submit_train.sh
-BoltzNCE/submit_inference.sh
 apex/
 configs/*
