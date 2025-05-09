@@ -85,3 +85,4 @@ class alanine_dataset(dgl.data.DGLDataset):
     def __getitem__(self, idx):
         self.graphs[idx].ndata['x'] = self.dataset[idx].reshape(self.n_particles, self.n_dimensions)
         return self.graphs[idx]
+    

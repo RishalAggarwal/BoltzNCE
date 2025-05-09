@@ -148,7 +148,7 @@ class Interpolant(torch.nn.Module):
             condition=self.graph.ndata['x0']
             condition=condition.view(-1,self.n_dimensions)
         xt=x
-        coordinates=xt.clone().detach()
+        coordinates=xt
         coordinates=coordinates.view(-1,self.n_dimensions)
         self.graph.ndata['x']=coordinates
         t_clone=t
@@ -271,9 +271,9 @@ class Interpolant(torch.nn.Module):
         #x=remove_mean(x,n_particles=self.n_particles,n_dimensions=self.n_dimensions)
         x=x.view(-1,self.dim)
         log_prob_prior_unnormalized=-0.5 * x.pow(2).sum(dim=-1, keepdim=True).to('cuda')
-        log_prob_prior=self.prior.log_prob(x).view(-1,1)
-        log_prob_prior=log_prob_prior.to('cuda')
-        log_prob=log_prob_prior - log_prob[-1]
+        #log_prob_prior=self.prior.log_prob(x).view(-1,1)
+        #log_prob_prior=log_prob_prior.to('cuda')
+        log_prob=log_prob_prior_unnormalized - log_prob[-1]
         return log_prob
     
     def get_timespan(self,n_timesteps=200):
