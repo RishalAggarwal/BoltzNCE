@@ -36,6 +36,7 @@ def parse_arguments():
     p.add_argument('--n_samples', type=int, default=500)
     p.add_argument('--n_sample_batches', type=int, default=200)
     p.add_argument('--wandb_inference_name', type=str, default=None)
+    # TODO put correct checkpoint into config files
     args=p.parse_args()
     return args,p
 
