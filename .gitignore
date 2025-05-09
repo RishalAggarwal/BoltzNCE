@@ -11,3 +11,6 @@ BoltzNCE/generated/
 BoltzNCE/saved_models/*
 apex/
 configs/*
+data/2AA-1-huge/
+data/2AA-1-large/
+data/AD2/
