@@ -148,7 +148,7 @@ class Interpolant(torch.nn.Module):
             condition=self.graph.ndata['x0']
             condition=condition.view(-1,self.n_dimensions)
         xt=x
-        coordinates=xt.clone().detach()
+        coordinates=xt
         coordinates=coordinates.view(-1,self.n_dimensions)
         self.graph.ndata['x']=coordinates
         t_clone=t
