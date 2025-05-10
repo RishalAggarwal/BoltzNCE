@@ -8,7 +8,7 @@ from scipy.optimize import linear_sum_assignment
 from bgflow.utils import remove_mean
 
 class Interpolant(torch.nn.Module):
-    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False,endpoint=False,self_conditioning=False):
+    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False,endpoint=False,self_conditioning=False,rtol=1e-3,atol=1e-3,tmin = 1e-3):
         super().__init__()
         self.potential_function = potential_function
         self.vector_field=vector_field
@@ -26,6 +26,9 @@ class Interpolant(torch.nn.Module):
         self.ot=ot
         self.endpoint=endpoint
         self.self_conditioning=self_conditioning
+        self.rtol = rtol
+        self.atol = atol
+        self.tmin = tmin
 
     def alpha(self,t):
         if self.interpolant_type=='linear':
@@ -243,7 +246,7 @@ class Interpolant(torch.nn.Module):
             forward_fn=self.ode_endpoint_forward
             if self.self_conditioning:
                 method='euler'
-        x=torchdiffeq.odeint_adjoint(forward_fn, x_init, t, method=method,atol=1e-5,rtol=1e-5,adjoint_params=())
+        x=torchdiffeq.odeint_adjoint(forward_fn, x_init, t, method=method,atol=self.atol,rtol=self.rtol,adjoint_params=())
         return x[-1]
     
     @torch.no_grad()
@@ -255,7 +258,7 @@ class Interpolant(torch.nn.Module):
         log_prob_init=-0.5 * x_init.pow(2).sum(dim=-1, keepdim=True).to('cuda')
         self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
         t=self.get_timespan()
-        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,log_prob_init), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,log_prob_init), t, method='dopri5',atol=self.atol,rtol=self.rtol,adjoint_params=())
         return x[-1],log_prob[-1]
     
     @torch.no_grad()
@@ -265,7 +268,7 @@ class Interpolant(torch.nn.Module):
         self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
         t=self.get_timespan()
         t=t.__reversed__()
-        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,torch.zeros(x_init.shape[0]).to(x_init.device)), t, method='dopri5',atol=1e-5,rtol=1e-5,adjoint_params=())
+        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward, (x_init,torch.zeros(x_init.shape[0]).to(x_init.device)), t, method='dopri5',atol=self.atol,rtol=self.rtol,adjoint_params=())
         x=x[-1]
         x=x.cpu()
         #x=remove_mean(x,n_particles=self.n_particles,n_dimensions=self.n_dimensions)
@@ -280,9 +283,9 @@ class Interpolant(torch.nn.Module):
         tmax=0.999
         if self.vector_field is not None:
             tmax=1.0
-        tmin=0.0
-        if self.endpoint:
-            tmin=1e-3
+        tmin=self.tmin
+        # if self.endpoint:
+        #     tmin=1e-3
         t = torch.linspace(tmax, tmin, n_timesteps).to('cuda')
         return t
     
