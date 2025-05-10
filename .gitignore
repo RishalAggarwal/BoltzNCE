@@ -9,6 +9,7 @@ BoltzNCE/slurm-*
 BoltzNCE/wandb/
 BoltzNCE/generated/
 BoltzNCE/saved_models/*
+BoltzNCE/notebooks/plot_ramachandrans.ipynb
 apex/
 configs/*
 data/2AA-1-huge/

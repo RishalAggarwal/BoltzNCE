@@ -3,6 +3,8 @@ import torch
 import numpy as np
 import mdtraj as md
 import tqdm
+import dgl
+from bgflow.utils import remove_mean
 
 n_dimensions = 3
 
@@ -102,4 +104,24 @@ def aa2_featurizer(data_path,directory):
             [amino_idx_onehot, amino_types_onehot, atom_onehot], dim=1
         )
     return peptides,atom_types_dict,h_dict
+
+class AA2Dataset(dgl.data.DGLDataset):
+    def __init__(self,data,h_dict,atom_types_dict,peptides):
+        self.data = data
+        self.h_dict = h_dict
+        self.atom_types_dict = atom_types_dict
+        self.peptides = peptides
+        self.n_peptides = len(peptides)
+        self.coordinates = []
+        self.features = []
+        self.indexes = []
+        self.lengths = []
+        for i in range(self.n_peptides):
+            num_atoms = h_dict[peptides[i]].shape[0]
+            self.lengths += [num_atoms]* len(data[peptides[i]])
+            indexes = np.arange(len(data[peptides[i]])) * num_atoms + self.indexes[-1]
+            data_peptide=torch.from_numpy(data[peptides[i]])
+            
+
+
 
