@@ -74,8 +74,9 @@ python infer_ad2.py \
   --config "$config" \
   --n_sample_batches 40 \
   --n_samples 500 \
-  --wandb_inference_name "$(basename "$config" .yaml)_rtol${rtol}_atol${atol}_tmin${tmin}_rep${rep_idx}_div" \
+  --wandb_inference_name "$(basename "$config" .yaml)_rtol${rtol}_atol${atol}_tmin${tmin}_rep${rep_idx}_energy_w2" \
   --rtol "$rtol" \
   --atol "$atol" \
   --tmin "$tmin" \
+  --no-divergence
   

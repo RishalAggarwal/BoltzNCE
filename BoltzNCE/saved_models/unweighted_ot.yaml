@@ -1,5 +1,5 @@
-config: ../configs/train_vector_endpoint_tmax100_ema.yaml
-config_save_name: saved_models/trained_vector_5_layer_ot_endpoint_tmax100_ema.yaml
+config: ../configs/unweighted_ot.yaml
+config_save_name: saved_models/unweighted_ot.yaml
 dataloader:
   batch_size: 512
   dataset: ../data/AD2_relaxed.npy
@@ -7,7 +7,7 @@ dataloader:
   scaling: 1.0
   shuffle: true
 dim: 66
-ema: true
+ema: false
 ema_model:
   beta: 0.999
   update_every: 10
@@ -30,7 +30,7 @@ gvp:
   vector_gating: true
 interpolant:
   dim: 66
-  endpoint: true
+  endpoint: false
   interpolant_type: linear
   n_dimensions: 3
   num_particles: 22
@@ -38,7 +38,7 @@ interpolant:
   scaling: 1.0
   self_conditioning: false
 load_potential_checkpoint: null
-load_vector_field_checkpoint: saved_models/trained_vector_5_layer_ot_endpoint_tmax100_ema.pt
+load_vector_field_checkpoint: saved_models/unweighted_ot.pt
 model_type: vector_field
 n_dimensions: 3
 num_particles: 22
@@ -51,7 +51,7 @@ potential_model:
   num_particles: 22
 potential_type: gvp
 save_potential_checkpoint: null
-save_vector_field_checkpoint: saved_models/trained_vector_5_layer_ot_endpoint_tmax100_ema.pt
+save_vector_field_checkpoint: saved_models/unweighted_ot.pt
 scheduler:
   factor: 0.5
   min_lr: 1.0e-05
@@ -63,9 +63,9 @@ train_potential:
   num_negatives: 1
   window_size: 0.025
 train_vector:
-  endpoint: true
+  endpoint: false
   self_conditioning: false
-  tweight_max: 100.0
+  tweight_max: 1.5
 training:
   grad_norm: null
   num_epochs: 1000
@@ -75,5 +75,5 @@ vector_field_model:
   num_particles: 22
   self_conditioning: false
 wandb: true
-wandb_name: vector_field_trainining_ot_endpoint_tmax100_ema
+wandb_name: unweighted_ot
 wandb_project: BoltzNCE_alanine

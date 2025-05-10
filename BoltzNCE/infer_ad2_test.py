@@ -480,18 +480,18 @@ if __name__== "__main__":
         #sample 1000 samples randomly from the dataset and from our generated samples
 
         print(" ##### Calculating Energy W2 for 1000 samples")
-        w2_energies_np = energies_np[torch.randint(0, len(energies_np), (1000,))] 
-        w2_energies_data_holdout = energies_data_holdout[torch.randint(0, len(energies_data_holdout), (1000,))] 
+        w2_energies_np = energies_np[torch.randint(0, len(energies_np), (10000,))] 
+        w2_energies_data_holdout = energies_data_holdout[torch.randint(0, len(energies_data_holdout), (10000,))] 
         
        
         calc_energy_w2(w2_energies_np,w2_energies_data_holdout)
         print(" ##### Calculating torsion W2 for 1000 samples")
         
         
-        w2_holdout_samples=all_samples[torch.randint(0, len(all_samples), (1000,))]
+        w2_holdout_samples=all_samples[torch.randint(0, len(all_samples), (10000,))]
         w2_holdout_samples=remove_mean(w2_holdout_samples,n_particles=num_particles,n_dimensions=n_dimensions).numpy()
         
-        w2_gen_samples = samples_np[torch.randint(0, len(samples_np), (1000,))]
+        w2_gen_samples = samples_np[torch.randint(0, len(samples_np), (10000,))]
         
         w2_gen_angles = get_torsion_angles(w2_gen_samples)
         w2_holdout_angles = get_torsion_angles(w2_holdout_samples)
@@ -528,10 +528,10 @@ if __name__== "__main__":
     else:
         raise ValueError("Model type not recognized")
 
-    samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
-    get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
-    if args['save_generated']:
-        np.save(args['save_prefix'] + 'samples.npy', samples_np)
-        np.save(args['save_prefix'] + 'log_w.npy', log_w_np)
+    # samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
+    # get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
+    # if args['save_generated']:
+    #     np.save(args['save_prefix'] + 'samples.npy', samples_np)
+    #     np.save(args['save_prefix'] + 'log_w.npy', log_w_np)
 
     
