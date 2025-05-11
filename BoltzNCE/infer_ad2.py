@@ -380,11 +380,8 @@ def calc_torsion_w2(gen_angles,holdout_angles):
     """
     dist = np.expand_dims(gen_angles,0) - np.expand_dims(holdout_angles,1)
     dist = np.sum((dist % np.pi)**2,axis = -1)
-    print(gen_angles.shape)
-    print(holdout_angles.shape)
-    print(dist.shape)
     # dist = np.sqrt(dist)
-    W,log = ot.emd2(np.ones(gen_angles.shape[0]),np.ones(gen_angles.shape[0]),dist,log = True) # uniform weights as input
+    W = ot.emd2(np.ones(gen_angles.shape[0]),np.ones(gen_angles.shape[0]),dist) # uniform weights as input
     # w2_circle = ot.wasserstein_circle(gen_angles, holdout_angles, p=2)
     
     # print(f"Angles W2 distance: {w2_circle}")
