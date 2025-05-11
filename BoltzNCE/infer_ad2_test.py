@@ -146,16 +146,14 @@ def get_potential_logp(model: Interpolant,samples):
 
 def compute_nll(model: Interpolant,samples_torch):
     samples_torch = samples_torch/model.scaling
-    batch_size=500
+    batch_size=200
     i=0
     nll_all=[]
     while (i+batch_size)<len(samples_torch):
-        print('batch:',i,i+batch_size)
         samples_prob=samples_torch[i:i+batch_size]
         nll=model.NLL_integral(samples_prob)
         nll_all.append(nll.cpu().detach())
         i=i+batch_size
-    print('batch:',i,len(samples_torch))
     samples_prob=samples_torch[i:len(samples_torch)]
     nll=model.NLL_integral(samples_prob)
     nll_all.append(nll.cpu().detach())
@@ -464,11 +462,11 @@ if __name__== "__main__":
     potential_model.eval()
     vector_field.eval()
     integral_type='ode'
+    if args['divergence']==True:
+        integral_type='ode_divergence'
     if args['SDE']:
         integral_type='sde'
         args['divergence']=False
-    if args['divergence']==True:
-        integral_type='ode_divergence'
 
     if args['model_type']=='vector_field':
         ### generating initial samples
@@ -482,18 +480,18 @@ if __name__== "__main__":
         #sample 1000 samples randomly from the dataset and from our generated samples
 
         print(" ##### Calculating Energy W2 for 1000 samples")
-        w2_energies_np = energies_np[torch.randint(0, len(energies_np), (1000,))] 
-        w2_energies_data_holdout = energies_data_holdout[torch.randint(0, len(energies_data_holdout), (1000,))] 
+        w2_energies_np = energies_np[torch.randint(0, len(energies_np), (10000,))] 
+        w2_energies_data_holdout = energies_data_holdout[torch.randint(0, len(energies_data_holdout), (10000,))] 
         
        
         calc_energy_w2(w2_energies_np,w2_energies_data_holdout)
         print(" ##### Calculating torsion W2 for 1000 samples")
         
         
-        w2_holdout_samples=all_samples[torch.randint(0, len(all_samples), (1000,))]
+        w2_holdout_samples=all_samples[torch.randint(0, len(all_samples), (10000,))]
         w2_holdout_samples=remove_mean(w2_holdout_samples,n_particles=num_particles,n_dimensions=n_dimensions).numpy()
         
-        w2_gen_samples = samples_np[torch.randint(0, len(samples_np), (1000,))]
+        w2_gen_samples = samples_np[torch.randint(0, len(samples_np), (10000,))]
         
         w2_gen_angles = get_torsion_angles(w2_gen_samples)
         w2_holdout_angles = get_torsion_angles(w2_holdout_samples)
@@ -516,7 +514,6 @@ if __name__== "__main__":
             log_w_np=get_importance_weights(dlogf_np,energies_np)
 
     elif args['model_type']=='potential':
-        integral_type='ode'
         samples_np,_=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type,n_timesteps=1000)
         if args['MCMC']:
             time_start = time.time()
@@ -531,11 +528,10 @@ if __name__== "__main__":
     else:
         raise ValueError("Model type not recognized")
 
-    samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
-    get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np,prefix='BoltzNCE ')
-    if args['save_generated']:
-        np.save(args['save_prefix'] + 'samples.npy', samples_np)
-        np.save(args['save_prefix'] + 'log_w.npy', log_w_np)
-        np.save(args['save_prefix'] + 'dlogf.npy',  dlogf_np)
-        np.save(args['save_prefix'] + 'energies.npy', energies_np)
+    # samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
+    # get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
+    # if args['save_generated']:
+    #     np.save(args['save_prefix'] + 'samples.npy', samples_np)
+    #     np.save(args['save_prefix'] + 'log_w.npy', log_w_np)
+
     
