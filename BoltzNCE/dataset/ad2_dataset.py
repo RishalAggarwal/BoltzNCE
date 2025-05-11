@@ -20,12 +20,12 @@ def get_alanine_traj():
     ala_traj = md.Trajectory(dataset.xyz, dataset.system.mdtraj_topology)
     return ala_traj
 
-def get_alanine_dataset():
+def get_alanine_dataset(dataset):
     n_particles = 22
     n_dimensions = 3
     dim = n_particles * n_dimensions
     scaling = 10
-    data_smaller = torch.from_numpy(np.load("../data/AD2_relaxed_weighted.npy")).float()/10
+    data_smaller = torch.from_numpy(np.load(dataset)).float()/10
     data_smaller = remove_mean(data_smaller, n_particles, n_dimensions).reshape(-1, dim) * scaling
     return data_smaller
 
@@ -48,7 +48,10 @@ def get_alanine_features():
 
 def get_alanine_types_dataset_dataloaders(dataset=None,batch_size=512,shuffle=True,num_workers=8,scaling=1.0):
     if dataset is None:
-        dataset = get_alanine_dataset()
+        raise ValueError("No dataset provided")
+    else:
+        print(f"using dataset {dataset}")
+    dataset = get_alanine_dataset(dataset)
     h_initial = get_alanine_features()
     dataset = alanine_dataset(dataset,h_initial,scaling)
     dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)

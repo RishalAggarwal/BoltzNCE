@@ -19,5 +19,5 @@ def load_models(args,h_initial):
     if args['load_vector_field_checkpoint'] is not None:
         vector_field.load_state_dict(torch.load(args['load_vector_field_checkpoint']))
     # Initialize the interpolant
-    interpolant_obj=Interpolant(h_initial=h_initial,potential_function=potential_model,vector_field=vector_field,**args['interpolant']).cuda()
+    interpolant_obj=Interpolant(h_initial=h_initial,potential_function=potential_model,vector_field=vector_field, **args['interpolant']).cuda()
     return potential_model, vector_field, interpolant_obj

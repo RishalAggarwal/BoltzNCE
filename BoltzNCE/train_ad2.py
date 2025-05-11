@@ -24,6 +24,7 @@ global_vars['dim']=66
 def parse_arguments():
     p =argparse.ArgumentParser()
     p.add_argument('--config', type=str, default=None)
+    
     p.add_argument('--wandb', type=bool,required=False, default=False)
     p.add_argument('--wandb_project', type=str,required=False, default='BoltzNCE_alanine')
     p.add_argument('--wandb_name', type=str,required=False, default=None)
@@ -45,6 +46,7 @@ def parse_arguments():
     dataloader_group.add_argument('--batch_size', type=int,required=False, default=512)
     dataloader_group.add_argument('--shuffle', type=bool,required=False, default=True)
     dataloader_group.add_argument('--scaling', type=float,required=False, default=1.0)
+    dataloader_group.add_argument('--dataset',type=str,default="../data/AD2_relaxed_weighted.npy")
 
 
     training_group=p.add_argument_group('training')
