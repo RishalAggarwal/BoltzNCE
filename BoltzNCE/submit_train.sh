@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH -c 12
 #SBATCH --constraint L40
-#SBATCH --mail-user=jmc530@pitt.edu
+#SBATCH --mail-user=ria43@pitt.edu
 #SBATCH --mail-type=ALL
 
 # directory name where job will be run (on compute node)
