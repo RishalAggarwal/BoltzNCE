@@ -29,7 +29,7 @@ class Interpolant(torch.nn.Module):
         self.rtol = rtol
         self.atol = atol
         self.tmin = tmin
-        if self.self_conditioning:
+        if self.endpoint:
             self.tmin=1e-3
 
     def alpha(self,t):
