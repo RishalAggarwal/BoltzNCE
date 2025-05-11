@@ -8,3 +8,5 @@ model_type: 'vector_field'
 interpolant:
   ot: true
 
+dataloader:
+  dataset: '../data/AD2_relaxed.npy'

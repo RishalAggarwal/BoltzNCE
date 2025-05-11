@@ -8,7 +8,9 @@ ema: false
 
 interpolant:
   ot: true
-  
+
+dataloader:
+  dataset: '../data/AD2_relaxed.npy'
 
 train_vector:
   endpoint: true
