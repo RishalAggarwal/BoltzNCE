@@ -449,12 +449,18 @@ def get_torsion_angles(samples_np):
 
     return angles
 
-
+def update_interpolant_args(args):
+    args['interpolant_args']['rtol']=args['rtol']
+    args['interpolant_args']['atol']=args['atol']
+    args['interpolant_args']['tmin']=args['tmin']
+    return args
 
 
 if __name__== "__main__":
     args,p=parse_arguments()
     args=get_args(args,p)
+    args=update_interpolant_args(args)
+    
 
     wandb.init(project=args['wandb_project'], name=args['wandb_inference_name'])
     wandb.config.update(args)
