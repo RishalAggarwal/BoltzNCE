@@ -543,5 +543,5 @@ if __name__== "__main__":
             'dlogf': dlogf_np,
             'energies': energies_np
         }
-        np.save(args['save_prefix'] + '_numpy_dict.npz', **numpy_dict)
+        np.savez(args['save_prefix'] + '_numpy_dict.npz', **numpy_dict)
     
