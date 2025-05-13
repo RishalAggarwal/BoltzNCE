@@ -32,6 +32,8 @@ def parse_arguments():
     p.add_argument('--MCMC_steps',type=int, default=500)
     p.add_argument("--divergence", action="store_true",default=True)
     p.add_argument("--no-divergence", action="store_false", dest="divergence")
+    p.add_argument("--NLL", action="store_true",default=True)
+    p.add_argument("--no-NLL", action="store_false", dest="NLL")
     p.add_argument("--SDE", action="store_true", default=False)
     p.add_argument('--weight_threshold', type=float, default=0.2)
     p.add_argument('--n_samples', type=int, default=500)
@@ -44,7 +46,7 @@ def parse_arguments():
     p.add_argument("--atol", type=float, default=1e-5,
                    help="absolute tolerance for ODE/SDE solver")
     p.add_argument("--tmin",    type=float, default=1e-3,
-                   help="end‐point of the integration time span")
+                   help="endpoint of the integration time span")
     args=p.parse_args()
     
     return args,p
@@ -62,6 +64,8 @@ def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral
     #dlogf_all=[]
     #energies_np = np.empty(shape=(0))
     distances_x_np = np.empty(shape=(0))
+    interpolant_placeholder=interpolant_obj.interpolant_type
+    interpolant_obj.interpolant_type= interpolant_obj.integration_interpolant
 
     if integral_type=='Jarzynski':
         samples= interpolant_obj.Jarzynski_integral(n_samples*n_sample_batches,n_timesteps=n_timesteps,ess_threshold=ess_threshold)
@@ -100,6 +104,7 @@ def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral
     time_end = time.time()
     print("Sampling took {} seconds".format(time_end - time_start))
     wandb.log({"Sampling time": time_end - time_start})
+    interpolant_obj.interpolant_type=interpolant_placeholder
     return samples_np,dlogp_all
 
 def get_energies(samples,energies_holdout=True):
@@ -172,6 +177,7 @@ def get_importance_weights(dlogf_np,energies_np):
     #energies_w=energies_torch.numpy()
     log_w_np = as_numpy(energies_w).reshape(-1,1) - dlogf_np.reshape(-1,1)
     wandb.log({"Sampling efficiency Mean": sampling_efficiency(torch.from_numpy(log_w_np)).item()})
+    print("Sampling efficiency Mean: ",sampling_efficiency(torch.from_numpy(log_w_np)).item())
     log_w_torch=torch.tensor(log_w_np)
     log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
     log_w_np=log_w_torch.numpy()
@@ -381,7 +387,7 @@ def calc_torsion_w2(gen_angles,holdout_angles):
     dist = np.expand_dims(gen_angles,0) - np.expand_dims(holdout_angles,1)
     dist = np.sum((dist % np.pi)**2,axis = -1)
     # dist = np.sqrt(dist)
-    W = ot.emd2(np.ones(gen_angles.shape[0]),np.ones(gen_angles.shape[0]),dist) # uniform weights as input
+    W = ot.emd2(np.ones(gen_angles.shape[0]),np.ones(gen_angles.shape[0]),dist,numItermax=1e9) # uniform weights as input
     # w2_circle = ot.wasserstein_circle(gen_angles, holdout_angles, p=2)
     
     # print(f"Angles W2 distance: {w2_circle}")
@@ -508,15 +514,21 @@ if __name__== "__main__":
         if args['divergence']:
             
             #sample 1000 samples randomly from the dataset
-            nll_samples=all_samples[torch.randint(0, len(all_samples), (1000,))]
-            print(nll_samples.shape)
-            nll_samples=remove_mean(nll_samples,n_particles=num_particles,n_dimensions=n_dimensions)
-            print(" ####### Caclulating divergence for 1000 samples")
-            nll_np=compute_nll(interpolant_obj,nll_samples)
+            if args['NLL']:
+                nll_samples=all_samples[torch.randint(0, len(all_samples), (1000,))]
+                print(nll_samples.shape)
+                nll_samples=remove_mean(nll_samples,n_particles=num_particles,n_dimensions=n_dimensions)
+                print(" ####### Caclulating divergence for 1000 samples")
+                nll_np=compute_nll(interpolant_obj,nll_samples)
             wandb.log({"NLL_mean": -dlogf_np.mean()})
             wandb.log({"NLL_std": -dlogf_np.std()})
             print(" ####Calculating importance weights")
             log_w_np=get_importance_weights(dlogf_np,energies_np)
+            print(" ####Calculating classical importance weights")
+            dataset=get_alanine_implicit_dataset()
+            target=dataset.get_energy_model()
+            energies_classical=as_numpy(target.energy(torch.from_numpy(samples_np.reshape(-1,66)/10)))
+            log_w_classical=get_importance_weights(dlogf_np,energies_classical)
 
     elif args['model_type']=='potential':
         integral_type='ode'

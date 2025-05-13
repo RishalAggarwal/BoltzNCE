@@ -49,9 +49,8 @@ def get_alanine_features():
 def get_alanine_types_dataset_dataloaders(dataset=None,batch_size=512,shuffle=True,num_workers=8,scaling=1.0):
     if dataset is None:
         raise ValueError("No dataset provided")
-    else:
-        print(f"using dataset {dataset}")
-    dataset = get_alanine_dataset(dataset)
+    if type(dataset) == str:
+        dataset = get_alanine_dataset(dataset)
     h_initial = get_alanine_features()
     dataset = alanine_dataset(dataset,h_initial,scaling)
     dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)

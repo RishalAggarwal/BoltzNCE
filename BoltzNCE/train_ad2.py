@@ -108,6 +108,7 @@ def parse_arguments():
     interpolant_group=p.add_argument_group('interpolant')
     interpolant_group.add_argument('--interpolant_type', type=str,required=False, default='linear')
     interpolant_group.add_argument('--ot', type=bool,required=False, default=False)
+    interpolant_group.add_argument('--integration_interpolant', type=str,required=False, default='linear')
 
     args=p.parse_args()
     return args,p
@@ -184,6 +185,7 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
 
 def train_potential(args, dataloader: alanine_dataset,interpolant_obj: Interpolant, potential_model: GVP_EBM, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float,grad_norm: float):
     #hardcoding arguments for now
+    print('interpolant_type', interpolant_obj.interpolant_type)
     if args['ema']:
         ema = EMA(potential_model, beta=0.999, allow_different_devices = True)
     for epoch in tqdm.tqdm(range(num_epochs)):
@@ -273,7 +275,9 @@ if __name__ == "__main__":
     elif args['model_type']=='potential':
         #TODO hardcoded arguments for now
         samples_np,_=gen_samples(n_samples=500,n_sample_batches=200,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
-        h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(dataset=torch.from_numpy(samples_np).float(),**args['dataloader'])
+        args['dataloader']['dataset']=torch.from_numpy(samples_np).float()
+        h_initial, dataset, dataloader = get_alanine_types_dataset_dataloaders(**args['dataloader'])
+        args['dataloader']['dataset']='generated'
         potential_model=train_potential(args, dataloader,interpolant_obj, potential_model , optim_potential, scheduler_potential,**args['training'],**args['train_potential'])
         torch.save(potential_model.state_dict(), args['save_potential_checkpoint']) 
         interpolant_obj.potential_function=potential_model
@@ -281,6 +285,7 @@ if __name__ == "__main__":
         raise ValueError("Model type must be either 'vector_field' or 'potential'") 
     
     # Save the config to a file
+    
     with open(args['config_save_name'], 'w') as f:
         yaml.dump(args, f)
 

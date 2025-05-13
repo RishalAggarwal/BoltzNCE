@@ -8,7 +8,7 @@ from scipy.optimize import linear_sum_assignment
 from bgflow.utils import remove_mean
 
 class Interpolant(torch.nn.Module):
-    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False,endpoint=False,self_conditioning=False,rtol=1e-5,atol=1e-5,tmin = 0):
+    def __init__(self, h_initial=None,potential_function=None,num_particles=22,n_dimensions=3,dim=66,interpolant_type='linear',vector_field=None,scaling=1.0,ot=False,endpoint=False,self_conditioning=False,rtol=1e-5,atol=1e-5,tmin = 0,integration_interpolant='linear'):
         super().__init__()
         self.potential_function = potential_function
         self.vector_field=vector_field
@@ -29,6 +29,7 @@ class Interpolant(torch.nn.Module):
         self.rtol = rtol
         self.atol = atol
         self.tmin = tmin
+        self.integration_interpolant=integration_interpolant
         if self.endpoint:
             self.tmin=1e-3
 
