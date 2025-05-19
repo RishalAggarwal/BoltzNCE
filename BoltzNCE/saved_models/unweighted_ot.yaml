@@ -76,4 +76,4 @@ vector_field_model:
   self_conditioning: false
 wandb: true
 wandb_name: unweighted_ot
-wandb_project: BoltzNCE_alanine
+wandb_project: BoltzNCE_alanine_ot_w2

@@ -3,6 +3,7 @@ import tqdm
 import numpy as np
 import torch
 import dgl
+import os
 from bgflow.utils import remove_mean
 from bgflow.utils import distances_from_vectors
 from bgflow.utils import distance_vectors, as_numpy
@@ -51,7 +52,7 @@ def parse_arguments():
     
 
 
-def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral_type='ode',ess_threshold=0.75,n_timesteps=1000):
+def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral_type='ode',ess_threshold=0.75,n_timesteps=10000):
     
     time_start = time.time()
     
@@ -116,10 +117,31 @@ def get_energies(samples,energies_holdout=True):
     energy_offset = 34600
     energies_np += energy_offset
     energies_data_holdout=None
+    
+    # path where we’ll cache the energies
+    energies_holdout_file = "../data/energies_data_holdout.npy"
+
     if energies_holdout:
-        data_holdout_xtb = torch.from_numpy(np.load("../data/AD2_relaxed_holdout.npy")).reshape(-1, 66)
-        energies_data_holdout = target_xtb.energy(data_holdout_xtb[::9]/scaling)
-        energies_data_holdout += energy_offset
+        # if we already computed it, just load
+        if os.path.exists(energies_holdout_file):
+            energies_data_holdout = np.load(energies_holdout_file)
+            # if you need it back as a torch tensor:
+            energies_data_holdout = torch.from_numpy(energies_data_holdout)
+        else:
+            # otherwise compute it...
+            data_holdout_xtb = torch.from_numpy(
+                np.load("../data/AD2_relaxed_holdout.npy")
+            ).reshape(-1, 66)
+            energies_data_holdout = target_xtb.energy(data_holdout_xtb[::9] / scaling)
+            energies_data_holdout += energy_offset
+
+            # save out as numpy for next time
+            # convert to CPU numpy array if it’s on GPU
+            energies_data_holdout = energies_data_holdout.detach().cpu().numpy()
+            np.save(energies_holdout_file, energies_data_holdout)
+            energies_data_holdout = torch.from_numpy(energies_data_holdout)
+
+        
     #TODO implement jensen-shannon divergence for the energies
     return energies_np,energies_data_holdout
 
@@ -353,21 +375,23 @@ def calc_energy_w2(gen_energies, holdout_energies):
     # flatten both to 1-D
     
     gen_energies = gen_energies.ravel()
-    holdout_energies = holdout_energies.ravel()
+    holdout_energies = holdout_energies.numpy(force = True).ravel()
 
     # sort them
     gen_energies_sorted = np.sort(gen_energies)
     holdout_energies_sorted = np.sort(holdout_energies)
+    loss, log = ot.emd2_1d(gen_energies,holdout_energies,metric = "euclidean",log = True)
+    print(log)
 
-    # compute MSE of the sorted values = W2^2
-    w2_squared = np.mean((gen_energies_sorted - holdout_energies_sorted)**2)
+    # # compute MSE of the sorted values = W2^2
+    # w2_squared = np.mean((gen_energies_sorted - holdout_energies_sorted)**2)
 
-    # take sqrt to get W2
-    W2 = np.sqrt(w2_squared)
-
-    print(f"W2 distance: {W2.item():.6f}")
+    # # take sqrt to get W2
+    # W2 = np.sqrt(w2_squared)
+    
+    print(f"W2 distance: {loss:.6f}")
     # if you want to log to wandb (scalar)
-    wandb.log({"energies_w2": W2.item()})
+    wandb.log({"energies_w2": loss})
 
 def calc_torsion_w2(gen_angles,holdout_angles):
     """calculates OT w2 Torsion angles 
@@ -382,9 +406,10 @@ def calc_torsion_w2(gen_angles,holdout_angles):
     print(holdout_angles.shape)
     print(dist.shape)
     # dist = np.sqrt(dist)
-    W,log = ot.emd2(np.ones(gen_angles.shape[0]),np.ones(gen_angles.shape[0]),dist,log = True) # uniform weights as input
+    a, b = ot.unif(gen_angles.shape[0]), ot.unif(gen_angles.shape[0])
+    W,log = ot.emd2(a,b,dist,log = True, numItermax=1e9) # uniform weights as input
     # w2_circle = ot.wasserstein_circle(gen_angles, holdout_angles, p=2)
-    
+    W = np.sqrt(W)
     # print(f"Angles W2 distance: {w2_circle}")
     
     # w2_circle = ot.wasserstein_circle(gen_angles, holdout_angles, p=2)
@@ -476,29 +501,29 @@ if __name__== "__main__":
         energies_np,energies_data_holdout=get_energies(samples_np)
         log_w_np=np.zeros((len(samples_np),1))
         
-        all_samples=torch.from_numpy(np.load("../data/AD2_relaxed_holdout.npy")).reshape(-1, 66).float()
-        #sample 1000 samples randomly from the dataset and from our generated samples
+        # all_samples=torch.from_numpy(np.load("../data/AD2_relaxed_holdout.npy")).reshape(-1, 66).float()
+        # #sample 1000 samples randomly from the dataset and from our generated samples
 
-        print(" ##### Calculating Energy W2 for 1000 samples")
-        w2_energies_np = energies_np[torch.randint(0, len(energies_np), (1000,))] 
-        w2_energies_data_holdout = energies_data_holdout[torch.randint(0, len(energies_data_holdout), (1000,))] 
+        # print(" ##### Calculating Energy W2 for 10000 samples")
+        # w2_energies_np = energies_np[torch.randint(0, len(energies_np), (10000,))] 
+        # w2_energies_data_holdout = energies_data_holdout[torch.randint(0, len(energies_data_holdout), (10000,))] 
         
        
-        calc_energy_w2(w2_energies_np,w2_energies_data_holdout)
-        print(" ##### Calculating torsion W2 for 1000 samples")
+        # calc_energy_w2(w2_energies_np,w2_energies_data_holdout)
+        # print(" ##### Calculating torsion W2 for 10000 samples")
         
         
-        w2_holdout_samples=all_samples[torch.randint(0, len(all_samples), (1000,))]
-        w2_holdout_samples=remove_mean(w2_holdout_samples,n_particles=num_particles,n_dimensions=n_dimensions).numpy()
+        # w2_holdout_samples=all_samples[torch.randint(0, len(all_samples), (10000,))]
+        # w2_holdout_samples=remove_mean(w2_holdout_samples,n_particles=num_particles,n_dimensions=n_dimensions).numpy()
         
-        w2_gen_samples = samples_np[torch.randint(0, len(samples_np), (1000,))]
+        # w2_gen_samples = samples_np[torch.randint(0, len(samples_np), (10000,))]
         
-        w2_gen_angles = get_torsion_angles(w2_gen_samples)
-        w2_holdout_angles = get_torsion_angles(w2_holdout_samples)
+        # w2_gen_angles = get_torsion_angles(w2_gen_samples)
+        # w2_holdout_angles = get_torsion_angles(w2_holdout_samples)
         
         
         
-        calc_torsion_w2(w2_gen_angles,w2_holdout_angles)
+        # calc_torsion_w2(w2_gen_angles,w2_holdout_angles)
     
         if args['divergence']:
             
@@ -511,7 +536,7 @@ if __name__== "__main__":
             wandb.log({"NLL_mean": -dlogf_np.mean()})
             wandb.log({"NLL_std": -dlogf_np.std()})
             print(" ####Calculating importance weights")
-            log_w_np=get_importance_weights(dlogf_np,energies_np)
+            # log_w_np=get_importance_weights(dlogf_np,energies_np)
 
     elif args['model_type']=='potential':
         samples_np,_=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type,n_timesteps=1000)
@@ -528,10 +553,12 @@ if __name__== "__main__":
     else:
         raise ValueError("Model type not recognized")
 
-    samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
-    get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
+    # samples_np,energies_np,log_w_np=plot_energy_distributions(energies_data_holdout,samples_np,energies_np,log_w_np,weight_threshold=args['weight_threshold'])
+    # get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np)
     if args['save_generated']:
-        np.save(args['save_prefix'] + 'samples.npy', samples_np)
-        np.save(args['save_prefix'] + 'log_w.npy', log_w_np)
+        np.save(args['save_prefix'] + args["wandb_inference_name"] + 'samples_100k.npy', samples_np)
+        # np.save(args['save_prefix'] + args["wandb_inference_name"] + 'log_w_100k.npy', log_w_np)
+        np.save(args['save_prefix'] + args["wandb_inference_name"] + 'energies_100k.npy', energies_np)
+        
 
     

@@ -1,20 +1,21 @@
 #!/bin/bash
 #SBATCH --job-name=ad2_inference
-#SBATCH --partition=koes_gpu
+#SBATCH --partition=dept_gpu
 #SBATCH --gres=gpu:1
 #SBATCH -c 12
-#SBATCH --constraint=L40
+#SBATCH --constraint=C8
 #SBATCH --mail-user=jmc530@pitt.edu
 #SBATCH --mail-type=ALL
-#SBATCH --array=0-20%15
+#SBATCH --array=0-20%10
+
 
 # ─── replicates ──────────────────────────────────────────────────────────────
-replicates=5
+replicates=1
 
 # ─── parameter grid (largest → smallest, by decades) ─────────────────────────
 rtol_vals=(1e-5)
 atol_vals=(1e-5)
-tmin_vals=(1e-3)
+
 
 # ─── one or more model configs ───────────────────────────────────────────────
 # yaml_files=(
@@ -22,15 +23,33 @@ tmin_vals=(1e-3)
 #   # add more if you like…
 # )
 
-yaml_files=( saved_models/trained_vector_5_layer_ot.yaml  
 
-saved_models/trained_vector_5_layer_ot_ema.yaml  
 
-saved_models/trained_vector_5_layer_ot_endpoint_tmax100.yaml  
+# tmin_vals=(1e-3)
+# yaml_files=(
+# saved_models/unweighted_ot_endpoint_tmax100.yaml  
 
-saved_models/trained_vector_5_layer_ot_endpoint_tmax100_ema.yaml  
+# saved_models/unweighted_ot_endpoint_tmax100_ema.yaml  
+
+# ) 
+
+
+
+tmin_vals=(0)
+yaml_files=(saved_models/unweighted_ot.yaml  
+
+saved_models/unweighted_ot_ema.yaml  
+
 
 ) 
+
+
+# yaml_files=( 
+# saved_models/unweighted_ot_ema.yaml  
+
+
+
+# ) 
 
 # ─── derive sizes & total tasks ──────────────────────────────────────────────
 num_cfg=${#yaml_files[@]}
@@ -72,11 +91,14 @@ source activate boltznce
 
 python infer_ad2.py \
   --config "$config" \
-  --n_sample_batches 40 \
+  --n_sample_batches 200 \
   --n_samples 500 \
-  --wandb_inference_name "$(basename "$config" .yaml)_rtol${rtol}_atol${atol}_tmin${tmin}_rep${rep_idx}_energy_w2" \
+  --wandb_inference_name "$(basename "$config" .yaml)_rtol${rtol}_atol${atol}_tmin${tmin}_rep${rep_idx}" \
   --rtol "$rtol" \
   --atol "$atol" \
   --tmin "$tmin" \
-  --no-divergence
-  
+  --save_generated \
+  --no-divergence \
+
+
+

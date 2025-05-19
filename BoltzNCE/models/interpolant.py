@@ -218,18 +218,29 @@ class Interpolant(torch.nn.Module):
     
 
     @torch.no_grad()
-    def sde_integral(self,n_samples,n_timesteps=1000):
+    def sde_integral(self,n_samples,n_timesteps=10000):
+        print(n_timesteps)
         self.setup_graph(n_samples)
         x_init=self.prior.sample((n_samples,)).to('cuda')
         self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
-        timespan = torch.linspace(1, 0.001, n_timesteps+1).to('cuda')
+        timespan = torch.linspace(1, self.tmin, n_timesteps+1).to('cuda')
         samples=x_init
         dt=(timespan[1]-timespan[0]).view(-1,1).to(samples.device)
+        final_t = 0
         for t in timespan:
             drift,noise=self.sde_forward(t,samples)
             samples=samples + drift*dt
             if t!=timespan[-1]:
                 samples=samples + noise * torch.sqrt(torch.abs(dt))
+            final_t = t
+            
+
+        
+        final_drift, final_noise = self.sde_forward(final_t,samples)
+        
+        h = 0.0 - final_t           # = -self.tmin
+        samples = samples + final_drift * h
+        # samples = samples + final_drift*self.tmin
         return samples
     
     
