@@ -1,0 +1,60 @@
+config_save_name: saved_models/trained_potential_trig_graphormer_1b8ld256.yaml
+dataloader:
+  batch_size: 512
+  num_workers: 8
+  scaling: 1.0
+  shuffle: true
+dim: 66
+ema: false
+potential_type: graphormer
+gvp:
+  n_hidden: 64
+  n_message_gvps: 1
+  n_update_gvps: 1
+  n_vec: 16
+  use_dst_feats: false
+  vector_gating: true
+graphormer:
+  embed_dim: 256
+  ffn_embed_dim: 256
+  attention_heads: 32
+  dropout: 0.0
+  attention_dropout: 0.0
+  activation_dropout: 0.0
+  num_kernel: 50
+  input_dropout: 0.0
+  blocks: 1
+interpolant:
+  dim: 66
+  interpolant_type: linear
+  n_dimensions: 3
+  num_particles: 22
+load_potential_checkpoint: null
+load_vector_field_checkpoint: saved_models/trained_vector_5_layer_ot_ema.pt
+model_type: potential
+n_dimensions: 3
+num_particles: 22
+optimizer_type: adam
+optimizer:
+  lr: 0.001
+  weight_decay: 0.0
+potential_model:
+  num_layers: 8
+  num_particles: 22
+save_potential_checkpoint: saved_models/trained_potential_trig_graphormer_1b8ld256.pt
+save_vector_field_checkpoint: saved_models/trained_vector_5_layer_ot_ema.pt
+scheduler:
+  factor: 0.5
+  min_lr: 1.0e-05
+  mode: min
+  patience: 30
+  verbose: true
+training:
+  num_epochs: 1000
+vector_field_model:
+  n_coord_gvps: 1
+  n_layers: 5
+  num_particles: 22
+wandb: true
+wandb_name: potential_trainining_trig_graphormer_1b8ld256
+wandb_project: BoltzNCE_alanine

@@ -1,0 +1,13 @@
+wandb: true
+wandb_project: 'BoltzNCE_alanine'
+wandb_name: 'vector_field_trainining_ot_endpoint_ema'
+save_vector_field_checkpoint: 'saved_models/trained_vector_5_layer_ot_endpoint_ema.pt'
+config_save_name: 'saved_models/trained_vector_5_layer_ot_endpoint_ema.yaml'
+model_type: 'vector_field'
+ema: true
+interpolant:
+  ot: true
+
+train_vector:
+  endpoint: true
+

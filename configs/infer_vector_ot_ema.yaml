@@ -1,0 +1,51 @@
+config_save_name: saved_models/infer_vector_5_layer_ot_ema.yaml
+dataloader:
+  batch_size: 512
+  num_workers: 8
+  scaling: 1.0
+  shuffle: true
+dim: 66
+gvp:
+  n_hidden: 64
+  n_message_gvps: 1
+  n_update_gvps: 1
+  n_vec: 16
+  use_dst_feats: false
+  vector_gating: true
+interpolant:
+  dim: 66
+  interpolant_type: linear
+  n_dimensions: 3
+  num_particles: 22
+  ot: true
+load_potential_checkpoint: null
+load_vector_field_checkpoint: saved_models/trained_vector_5_layer_ot_ema.pt
+model_type: vector_field
+n_dimensions: 3
+num_particles: 22
+ema: true
+optimizer:
+  lr: 0.001
+  weight_decay: 0.0
+potential_model:
+  num_layers: 8
+  num_particles: 22
+potential_type: 'gvp'
+save_potential_checkpoint: null
+save_vector_field_checkpoint: saved_models/trained_vector_5_layer_ot_ema.pt
+scheduler:
+  factor: 0.5
+  min_lr: 1.0e-05
+  mode: min
+  patience: 20
+  verbose: true
+training:
+  num_epochs: 1000
+  window_size: 0.025
+vector_field_model:
+  n_coord_gvps: 1
+  n_layers: 5
+  num_particles: 22
+wandb: true
+wandb_name: vector_field_infer_ot_ema
+wandb_project: BoltzNCE_alanine
