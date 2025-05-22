@@ -8,6 +8,10 @@ All the required packages besides ```bgmol, bgflow``` are in ```install_things.s
 
 Trained model weights have been uploaded, but to reproduce the next section is for model training.
 
+## Dataset
+
+The dataset can be downloaded from [here](https://osf.io/srqg7/files/osfstorage?view_only=28deeba0845546fb96d1b2f355db0da5). Download the ```ad2_*.npy``` files and place them in the ```data``` folder.
+
 ## Model training
 
 ```cd BoltzNCE```
