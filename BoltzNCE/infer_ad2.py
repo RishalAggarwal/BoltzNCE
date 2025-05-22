@@ -37,7 +37,7 @@ def parse_arguments():
     p.add_argument("--SDE", action="store_true", default=False)
     p.add_argument('--weight_threshold', type=float, default=0.2)
     p.add_argument('--n_samples', type=int, default=500)
-    p.add_argument('--n_sample_batches', type=int, default=20)
+    p.add_argument('--n_sample_batches', type=int, default=200)
     p.add_argument('--wandb_inference_name', type=str, default=None)
     p.add_argument('--save_generated',action='store_true', default=False)
     p.add_argument('--save_prefix',type=str, default='./generated/')
