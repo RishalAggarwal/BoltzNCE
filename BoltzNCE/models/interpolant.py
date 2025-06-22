@@ -70,26 +70,29 @@ class Interpolant(torch.nn.Module):
         sigma_t=self.sigma(t).view(-1,1)
         alpha_t_dot=self.alpha_dot(t).view(-1,1)
         sigma_t_dot=self.sigma_dot(t).view(-1,1)
-        sigma_t_extended=sigma_t.repeat_interleave(self.n_particles)
+        sigma_t_extended=sigma_t.repeat_interleave(g.batch_num_nodes())
         sigma_t_extended=sigma_t_extended.view(-1,1)
-        alpha_t_extended=alpha_t.repeat_interleave(self.n_particles)
+        alpha_t_extended=alpha_t.repeat_interleave(g.batch_num_nodes())
         alpha_t_extended=alpha_t_extended.view(-1,1)
-        alpha_t_dot_extended=alpha_t_dot.repeat_interleave(self.n_particles)
+        alpha_t_dot_extended=alpha_t_dot.repeat_interleave(g.batch_num_nodes())
         alpha_t_dot_extended=alpha_t_dot_extended.view(-1,1)
-        sigma_t_dot_extended=sigma_t_dot.repeat_interleave(self.n_particles)
+        sigma_t_dot_extended=sigma_t_dot.repeat_interleave(g.batch_num_nodes())
         sigma_t_dot_extended=sigma_t_dot_extended.view(-1,1)
-        coords_prior = torch.randn_like(g.ndata['x'])
-        coords_shape=g.ndata['x'].shape
-        coords_sample=g.ndata['x']
-        if self.ot:
-            coords_prior=coords_prior.view(-1,self.dim)
-            coords_sample=coords_sample.view(-1,self.dim)
-            row_ind, col_ind = self.OT_coupling(coords_sample,coords_prior)
-            coords_prior=coords_prior[col_ind]
-            coords_prior=coords_prior.view(coords_shape)
-            coords_sample=coords_sample.view(coords_shape)
-        g.ndata['x0']=coords_sample.clone()
-        g.ndata['x1']=coords_prior
+        if 'x1' not in g.ndata:
+            coords_prior = torch.randn_like(g.ndata['x'])
+            coords_shape=g.ndata['x'].shape
+            coords_sample=g.ndata['x']
+            if self.ot:
+                coords_prior=coords_prior.view(-1,self.dim)
+                coords_sample=coords_sample.view(-1,self.dim)
+                row_ind, col_ind = self.OT_coupling(coords_sample,coords_prior)
+                coords_prior=coords_prior[col_ind]
+                coords_prior=coords_prior.view(coords_shape)
+                coords_sample=coords_sample.view(coords_shape)
+            g.ndata['x0']=coords_sample.clone()
+            g.ndata['x1']=coords_prior
+        else:
+            g.ndata['x']=g.ndata['x0'].clone()
         g.ndata['xt'] = alpha_t_extended*g.ndata['x'] + sigma_t_extended*g.ndata['x1']
         g.ndata['v'] = alpha_t_dot_extended*g.ndata['x'] + sigma_t_dot_extended*g.ndata['x1']
         g.ndata['x']=g.ndata['xt']

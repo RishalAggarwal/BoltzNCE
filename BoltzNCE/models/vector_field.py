@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .gvp import GVPConv, NodePositionUpdate
 from .swish import SwishBeta
+import dgl
 
 
 class GVP_vector_field(torch.nn.Module):
@@ -21,7 +22,7 @@ class GVP_vector_field(torch.nn.Module):
     def forward(self,t,data,condition=None):
         x_init = data.ndata['x'].clone()
         v_init = torch.zeros((data.num_nodes(), self.n_vec_channels, 3), device='cuda')
-        ts=t.repeat_interleave(self.num_particles)
+        ts=t.repeat_interleave(data.batch_num_nodes())
         ts=ts.view(-1,1)
         z_init = torch.cat([data.ndata['h'],ts],dim=1)
         zs = self.initial_embedding(z_init)

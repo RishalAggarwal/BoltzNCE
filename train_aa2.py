@@ -101,6 +101,55 @@ def parse_arguments():
     args=p.parse_args()
     return args,p
 
+
+def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint,self_conditioning,tweight_max):
+    if args['ema']:
+        ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
+    for epoch in tqdm.tqdm(range(num_epochs)):
+        losses=[]
+        for it,g in enumerate(dataloader):
+            optim_vector.zero_grad()
+            g=g.to('cuda')
+            batch_size=g.batch_size
+            t=torch.rand(batch_size,1).cuda()
+            sigma_t=interpolant_obj.sigma(t)
+            sigma_t=sigma_t.view(-1,1)
+            g=interpolant_obj.get_xt_and_vt(t,g)
+            if endpoint:
+                vector_target=g.ndata['x0']
+                alpha_t=interpolant_obj.alpha(t).view(-1,1)
+                alpha_dot_t=interpolant_obj.alpha_dot(t).view(-1,1)
+                time_weight=torch.min(torch.max(torch.tensor([0.005]).to(alpha_t.device),torch.abs((alpha_dot_t*sigma_t - alpha_t)/sigma_t)),torch.tensor([tweight_max]).to(alpha_t.device)).view(-1,1)
+                if self_conditioning and torch.rand(1).item() < 0.5:
+                    with torch.no_grad():
+                        vector_condition=vector_model(t,g)
+                    vector=vector_model(t,g,condition=vector_condition)
+                else:
+                    vector=vector_model(t,g)
+            else:
+                vector_target=g.ndata['v']
+                vector=vector_model(t,g)
+                time_weight=torch.ones_like(t)
+            vector_target=vector_target.view(-1,interpolant_obj.dim)
+            vector=vector.view(-1,interpolant_obj.dim)
+            time_weight=time_weight.to(device=vector.device)
+            loss_vector=torch.mean((time_weight*(vector - vector_target))**2)
+            if args['wandb']:
+                wandb.log({"vector_loss": loss_vector.item()})
+            loss_vector.backward()
+            if grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(vector_model.parameters(), grad_norm)
+            optim_vector.step()
+            if args['ema']:
+                ema.update()
+            losses.append(loss_vector.item())
+        scheduler_vector.step(sum(losses)/len(losses))
+        print(f"Epoch {epoch}: Vector Field Loss: {sum(losses)/len(losses)}")
+    if args['ema']:
+        vector_model=ema.ema_model
+    return vector_model
+
+
 if __name__ == "__main__":
     args,p=parse_arguments()
     args=get_args(args,p)
@@ -110,5 +159,26 @@ if __name__ == "__main__":
         wandb.config.update(args)
 
     dataloader = get_ad2_dataloader(**args['dataloader'])
-    vector_field_model = GVP_vector_field(**args['vector_field_model'], **args['gvp']).cuda()
+    vector_field = GVP_vector_field(**args['vector_field_model'], **args['gvp']).cuda()
+    interpolant_obj = Interpolant(h_initial=dataloader.h_initial, potential_function=None, vector_field=vector_field, **args['interpolant']).cuda()
+
+    optimizer=torch.optim.Adam
+    if args['optimizer_type']=='adam':
+        optimizer=torch.optim.Adam
+    elif args['optimizer_type']=='adamw':
+        optimizer=torch.optim.AdamW
+    else:
+        raise ValueError("Optimizer type must be either 'adam' or 'adamw'")
+    '''optim_potential=optimizer(potential_model.parameters(), **args['optimizer'])
+    scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])'''
+    optim_vector=optimizer(vector_field.parameters(), **args['optimizer'])
+    scheduler_vector=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_vector,**args['scheduler'])
+
+    vector_field=train_vector_field(args, dataloader,interpolant_obj, vector_field , optim_vector, scheduler_vector,**args['training'],**args['train_vector'])
+    torch.save(vector_field.state_dict(), args['save_vector_field_checkpoint'])
+    interpolant_obj.vector_field=vector_field
+
+    with open(args['config_save_name'], 'w') as f:
+        yaml.dump(args, f)
+
     
