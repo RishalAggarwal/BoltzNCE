@@ -361,21 +361,22 @@ def calc_energy_w2(gen_energies, holdout_energies):
     # flatten both to 1-D
     
     gen_energies = gen_energies.ravel()
-    holdout_energies = holdout_energies.ravel()
+    holdout_energies = holdout_energies.numpy(force = True).ravel()
 
     # sort them
     gen_energies_sorted = np.sort(gen_energies)
     holdout_energies_sorted = np.sort(holdout_energies)
+    loss, log = ot.emd2_1d(gen_energies,holdout_energies,metric = "euclidean",log = True)
 
-    # compute MSE of the sorted values = W2^2
-    w2_squared = np.mean((gen_energies_sorted - holdout_energies_sorted)**2)
+    # # compute MSE of the sorted values = W2^2
+    # w2_squared = np.mean((gen_energies_sorted - holdout_energies_sorted)**2)
 
-    # take sqrt to get W2
-    W2 = np.sqrt(w2_squared)
-
-    print(f"W2 distance: {W2.item():.6f}")
+    # # take sqrt to get W2
+    # W2 = np.sqrt(w2_squared)
+    
+    print(f"W2 distance: {loss:.6f}")
     # if you want to log to wandb (scalar)
-    wandb.log({"energies_w2": W2.item()})
+    wandb.log({"energies_w2": loss})
 
 def calc_torsion_w2(gen_angles,holdout_angles):
     """calculates OT w2 Torsion angles 
@@ -387,9 +388,10 @@ def calc_torsion_w2(gen_angles,holdout_angles):
     dist = np.expand_dims(gen_angles,0) - np.expand_dims(holdout_angles,1)
     dist = np.sum((dist % np.pi)**2,axis = -1)
     # dist = np.sqrt(dist)
-    W = ot.emd2(np.ones(gen_angles.shape[0]),np.ones(gen_angles.shape[0]),dist,numItermax=1e9) # uniform weights as input
+    a, b = ot.unif(gen_angles.shape[0]), ot.unif(gen_angles.shape[0])
+    W,log = ot.emd2(a,b,dist,log = True, numItermax=1e9) # uniform weights as input
     # w2_circle = ot.wasserstein_circle(gen_angles, holdout_angles, p=2)
-    
+    W = np.sqrt(W)
     # print(f"Angles W2 distance: {w2_circle}")
     
     # w2_circle = ot.wasserstein_circle(gen_angles, holdout_angles, p=2)

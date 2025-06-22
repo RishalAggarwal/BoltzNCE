@@ -167,7 +167,7 @@ def train_vector_field(args,dataloader: alanine_dataset,interpolant_obj: Interpo
             vector_target=vector_target.view(-1,interpolant_obj.dim)
             vector=vector.view(-1,interpolant_obj.dim)
             time_weight=time_weight.to(device=vector.device)
-            loss_vector=torch.mean(time_weight*(vector - vector_target)**2)
+            loss_vector=torch.mean((time_weight*(vector - vector_target))**2)
             if args['wandb']:
                 wandb.log({"vector_loss": loss_vector.item()})
             loss_vector.backward()
