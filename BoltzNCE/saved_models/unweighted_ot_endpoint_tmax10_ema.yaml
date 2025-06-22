@@ -1,0 +1,80 @@
+config: ../configs/unweighted_ot_endpoint_tmax10_ema.yaml
+config_save_name: saved_models/unweighted_ot_endpoint_tmax10_ema.yaml
+dataloader:
+  batch_size: 512
+  dataset: ../data/AD2_relaxed.npy
+  num_workers: 8
+  scaling: 1.0
+  shuffle: true
+dim: 66
+ema: true
+ema_model:
+  beta: 0.999
+  update_every: 10
+  update_model_with_ema_every: null
+graphormer:
+  attention_dropout: 0.1
+  attention_heads: 32
+  blocks: 3
+  dropout: 0.1
+  embed_dim: 128
+  ffn_embed_dim: 128
+  input_dropout: 0.1
+  num_kernel: 50
+gvp:
+  n_hidden: 64
+  n_message_gvps: 1
+  n_update_gvps: 1
+  n_vec: 16
+  use_dst_feats: false
+  vector_gating: true
+interpolant:
+  dim: 66
+  endpoint: true
+  integration_interpolant: linear
+  interpolant_type: linear
+  n_dimensions: 3
+  num_particles: 22
+  ot: true
+  scaling: 1.0
+  self_conditioning: false
+load_potential_checkpoint: null
+load_vector_field_checkpoint: null
+model_type: vector_field
+n_dimensions: 3
+num_particles: 22
+optimizer:
+  lr: 0.001
+  weight_decay: 0.0
+optimizer_type: adam
+potential_model:
+  num_layers: 8
+  num_particles: 22
+potential_type: gvp
+save_potential_checkpoint: null
+save_vector_field_checkpoint: saved_models/unweighted_ot_endpoint_tmax10_ema.pt
+scheduler:
+  factor: 0.5
+  min_lr: 1.0e-05
+  mode: min
+  patience: 20
+  verbose: true
+train_potential:
+  nce_weight: 1.0
+  num_negatives: 1
+  window_size: 0.025
+train_vector:
+  endpoint: true
+  self_conditioning: false
+  tweight_max: 10.0
+training:
+  grad_norm: null
+  num_epochs: 1000
+vector_field_model:
+  n_coord_gvps: 1
+  n_layers: 5
+  num_particles: 22
+  self_conditioning: false
+wandb: true
+wandb_name: unweighted_ot_endpoint_tmax10_ema
+wandb_project: BoltzNCE_alanine
