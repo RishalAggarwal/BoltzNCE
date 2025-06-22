@@ -18,3 +18,11 @@ data/AD2/
 BoltzNCE/notebooks/MD_ramachandran.pdf
 BoltzNCE/notebooks/MD_ramachandran.png
 BoltzNCE/notebooks/boltznce_ramachandran_fes.pdf
+
+*.npy
+*.zip
+*.npz
+*.pdb
+*.csv
+*.plot_ramachandrans
+*.log
