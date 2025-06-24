@@ -15,7 +15,9 @@ class Interpolant(torch.nn.Module):
         self.prior = torch.distributions.MultivariateNormal(torch.zeros(dim), torch.eye(dim))
         self.n_particles = num_particles
         self.n_dimensions = n_dimensions
-        self.h_initial = h_initial.to('cuda')
+        self.h_initial = h_initial
+        if self.h_initial is not None:
+            self.h_initial=self.h_initial.to('cuda')
         self.dim = dim
         self.nodes=torch.arange(self.n_particles)
         self.edges=torch.cartesian_prod(self.nodes,self.nodes)

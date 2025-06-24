@@ -3,6 +3,8 @@ from BoltzNCE.dataset.aa2_dataloader import get_ad2_dataloader
 from BoltzNCE.models.ebm import GVP_EBM
 from BoltzNCE.models.vector_field import GVP_vector_field
 from BoltzNCE.models.interpolant import Interpolant
+import sys
+sys.path.append('./BoltzNCE/')
 import tqdm
 import dgl
 import copy
@@ -38,7 +40,7 @@ def parse_arguments():
     dataloader_group.add_argument('--data_path',type=str,default="data/2AA-1-large/",required=False)
 
     training_group=p.add_argument_group('training')
-    training_group.add_argument('--num_epochs', type=int,required=False, default=1000)
+    training_group.add_argument('--num_epochs', type=int,required=False, default=12)
     training_group.add_argument('--grad_norm', type=float,required=False, default=None)
 
     '''train_potential_group=p.add_argument_group('train_potential')
@@ -84,6 +86,7 @@ def parse_arguments():
     vector_field_group=p.add_argument_group('vector_field_model')
     vector_field_group.add_argument('--n_layers', type=int,required=False, default=5)
     vector_field_group.add_argument('--n_coord_gvps', type=int,required=False, default=1)
+    vector_field_group.add_argument('--n_features', type=int,required=False, default=76)
 
     gvp_group=p.add_argument_group('gvp')
     gvp_group.add_argument('--n_hidden', type=int,required=False, default=64)
@@ -105,8 +108,8 @@ def parse_arguments():
 def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint,self_conditioning,tweight_max):
     if args['ema']:
         ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
+    losses=[]
     for epoch in tqdm.tqdm(range(num_epochs)):
-        losses=[]
         for it,g in enumerate(dataloader):
             optim_vector.zero_grad()
             g=g.to('cuda')
@@ -130,9 +133,8 @@ def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_mode
                 vector_target=g.ndata['v']
                 vector=vector_model(t,g)
                 time_weight=torch.ones_like(t)
-            vector_target=vector_target.view(-1,interpolant_obj.dim)
-            vector=vector.view(-1,interpolant_obj.dim)
             time_weight=time_weight.to(device=vector.device)
+            time_weight=time_weight.repeat_interleave(g.batch_num_nodes()).view(-1,1)
             loss_vector=torch.mean((time_weight*(vector - vector_target))**2)
             if args['wandb']:
                 wandb.log({"vector_loss": loss_vector.item()})
@@ -143,8 +145,11 @@ def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_mode
             if args['ema']:
                 ema.update()
             losses.append(loss_vector.item())
-        scheduler_vector.step(sum(losses)/len(losses))
+            if it % 300 == 0:
+                scheduler_vector.step(sum(losses)/len(losses))
+                losses=[]
         print(f"Epoch {epoch}: Vector Field Loss: {sum(losses)/len(losses)}")
+        torch.save(vector_field.state_dict(), args['save_vector_field_checkpoint'])
     if args['ema']:
         vector_model=ema.ema_model
     return vector_model
@@ -160,7 +165,7 @@ if __name__ == "__main__":
 
     dataloader = get_ad2_dataloader(**args['dataloader'])
     vector_field = GVP_vector_field(**args['vector_field_model'], **args['gvp']).cuda()
-    interpolant_obj = Interpolant(h_initial=dataloader.h_initial, potential_function=None, vector_field=vector_field, **args['interpolant']).cuda()
+    interpolant_obj = Interpolant(h_initial=None, potential_function=None, vector_field=vector_field, **args['interpolant']).cuda()
 
     optimizer=torch.optim.Adam
     if args['optimizer_type']=='adam':

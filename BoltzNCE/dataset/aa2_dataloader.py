@@ -7,9 +7,7 @@ import mdtraj as md
 import tqdm
 from torch.utils.data import Dataset, DataLoader
 from bgflow import MeanFreeNormalDistribution
-
-# reuse your featurizer
-from aa2_dataset import aa2_featurizer  
+from .aa2_dataset import aa2_featurizer
 
 
 
