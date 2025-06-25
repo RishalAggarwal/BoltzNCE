@@ -1,0 +1,12 @@
+wandb: true
+wandb_project: 'BoltzNCE_aa2'
+wandb_name: 'vector_field_training'
+save_vector_field_checkpoint: 'saved_models/trained_vector_9_layer_aa2.pt'
+config_save_name: 'saved_models/trained_vector_9_layer_aa2.yaml'
+model_type: 'vector_field'
+
+vector_field_model:
+  n_layers: 9
+
+gvp:
+  n_hidden: 128
