@@ -66,6 +66,8 @@ class AA2GraphDataset(dgl.data.DGLDataset):
         # x0: true coordinates
         x_true = torch.from_numpy(self.data[pep][frame]).float()
         x_true = x_true.view(-1, 3)  # ensure shape is (n_atoms, 3)
+        #mean center the coordinates
+        x_true = x_true - x_true.mean(dim=0, keepdim=True)
         '''pad_len = (self.max_atoms - n_real) * 3
         x_true = torch.nn.functional.pad(x_true, (0, pad_len)).view(self.max_atoms, 3)'''
 
