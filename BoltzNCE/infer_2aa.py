@@ -34,6 +34,8 @@ def parse_arguments():
     p.add_argument("--no-divergence", action="store_false", dest="divergence")
     p.add_argument("--NLL", action="store_true",default=True)
     p.add_argument("--no-NLL", action="store_false", dest="NLL")
+    p.add_argument("--NLL_samples", type=int, default=1000)
+    p.add_argument("--w2_samples", type=int, default=10000)
     p.add_argument("--SDE", action="store_true", default=False)
     p.add_argument('--weight_threshold', type=float, default=0.2)
     p.add_argument('--n_samples', type=int, default=500)
@@ -492,19 +494,19 @@ if __name__== "__main__":
         all_samples=torch.from_numpy(np.load("../data/AD2_relaxed_holdout.npy")).reshape(-1, 66).float()
         #sample 1000 samples randomly from the dataset and from our generated samples
 
-        print(" ##### Calculating Energy W2 for 10000 samples")
-        w2_energies_np = energies_np[torch.randint(0, len(energies_np), (10000,))] 
+        print(f" ##### Calculating Energy W2 for {args['w2_samples']} samples")
+        w2_energies_np = energies_np[torch.randint(0, len(energies_np), (args["w2_samples"],))] 
         w2_energies_data_holdout = energies_data_holdout[torch.randint(0, len(energies_data_holdout), (10000,))] 
         
        
         calc_energy_w2(w2_energies_np,w2_energies_data_holdout)
-        print(" ##### Calculating torsion W2 for 10000 samples")
+        print(f" ##### Calculating torsion W2 for {args['w2_samples']} samples")
         
         
-        w2_holdout_samples=all_samples[torch.randint(0, len(all_samples), (10000,))]
+        w2_holdout_samples=all_samples[torch.randint(0, len(all_samples), (args["w2_samples"],))]
         w2_holdout_samples=remove_mean(w2_holdout_samples,n_particles=num_particles,n_dimensions=n_dimensions).numpy()
         
-        w2_gen_samples = samples_np[torch.randint(0, len(samples_np), (10000,))]
+        w2_gen_samples = samples_np[torch.randint(0, len(samples_np), (args["w2_samples"],))]
         
         w2_gen_angles = get_torsion_angles(w2_gen_samples)
         w2_holdout_angles = get_torsion_angles(w2_holdout_samples)
@@ -515,12 +517,12 @@ if __name__== "__main__":
     
         if args['divergence']:
             
-            #sample 1000 samples randomly from the dataset
+            #sample NLL_samples samples randomly from the dataset
             if args['NLL']:
-                nll_samples=all_samples[torch.randint(0, len(all_samples), (1000,))]
+                nll_samples=all_samples[torch.randint(0, len(all_samples), (args["NLL_samples"],))]
                 print(nll_samples.shape)
                 nll_samples=remove_mean(nll_samples,n_particles=num_particles,n_dimensions=n_dimensions)
-                print(" ####### Caclulating divergence for 1000 samples")
+                print(f" ####### Caclulating divergence for {args['NLL_samples']} samples")
                 nll_np=compute_nll(interpolant_obj,nll_samples)
             wandb.log({"NLL_mean": -dlogf_np.mean()})
             wandb.log({"NLL_std": -dlogf_np.std()})

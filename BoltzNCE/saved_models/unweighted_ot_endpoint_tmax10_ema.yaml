@@ -39,7 +39,7 @@ interpolant:
   scaling: 1.0
   self_conditioning: false
 load_potential_checkpoint: null
-load_vector_field_checkpoint: null
+load_vector_field_checkpoint: saved_models/unweighted_ot_endpoint_tmax10_ema.pt
 model_type: vector_field
 n_dimensions: 3
 num_particles: 22
