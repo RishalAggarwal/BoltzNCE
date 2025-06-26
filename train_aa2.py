@@ -38,6 +38,7 @@ def parse_arguments():
     dataloader_group.add_argument('--batch_size', type=int,required=False, default=512)
     dataloader_group.add_argument('--shuffle', type=bool,required=False, default=True)
     dataloader_group.add_argument('--data_path',type=str,default="data/2AA-1-large/",required=False)
+    dataloader_group.add_argument('--kabsch', type=bool,required=False, default=False)
 
     training_group=p.add_argument_group('training')
     training_group.add_argument('--num_epochs', type=int,required=False, default=12)

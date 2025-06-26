@@ -15,8 +15,9 @@ from .aa2_dataset import aa2_featurizer
 
 # --- Dataset class with x1 as prior (noise), x0 as true data ---
 class AA2GraphDataset(dgl.data.DGLDataset):
-    def __init__(self, data_path, split="train", max_atom_number=51):
+    def __init__(self, data_path, split="train", max_atom_number=51,kabsch=False):
         self.max_atoms = max_atom_number
+        self.kabsch= kabsch
 
         # featurize pdbs
         directory = f"/{split}"
@@ -48,6 +49,43 @@ class AA2GraphDataset(dgl.data.DGLDataset):
         src, dst = torch.nonzero(mask, as_tuple=True)
         self.edge_index = (src, dst)'''
 
+    #taken from https://hunterheidenreich.com/posts/kabsch_algorithm/, thank you Hunter Heidenreich!
+    def kabsch_torch(self,P, Q):
+        """
+        Computes the optimal rotation and translation to align two sets of points (P -> Q),
+        and their RMSD.
+        :param P: A Nx3 matrix of points
+        :param Q: A Nx3 matrix of points
+        :return: A tuple containing the optimal rotation matrix, the optimal
+                translation vector, and the RMSD.
+        """
+        assert P.shape == Q.shape, "Matrix dimensions must match"
+
+        # Compute centroids
+        centroid_P = torch.mean(P, dim=0)
+        centroid_Q = torch.mean(Q, dim=0)
+
+        # Center the points
+        p = P - centroid_P
+        q = Q - centroid_Q
+
+        # Compute the covariance matrix
+        H = torch.matmul(p.transpose(0, 1), q)
+
+        # SVD
+        U, S, Vt = torch.linalg.svd(H)
+
+        # Validate right-handed coordinate system
+        if torch.det(torch.matmul(Vt.transpose(0, 1), U.transpose(0, 1))) < 0.0:
+            Vt[:, -1] *= -1.0
+
+        # Optimal rotation
+        R = torch.matmul(Vt.transpose(0, 1), U.transpose(0, 1))
+
+        # RMSD
+        #rmsd = torch.sqrt(torch.sum(torch.square(torch.matmul(p, R.transpose(0, 1)) - q)) / P.shape[0])
+
+        return R
 
 
     def __len__(self):
@@ -75,6 +113,11 @@ class AA2GraphDataset(dgl.data.DGLDataset):
         x_noise = torch.randn_like(x_true)  # random noise in [0,1]
         # x_noise = resample_noise()
         #x_noise = torch.nn.functional.pad(x_noise, (0, pad_len)).view(self.max_atoms, 3)
+
+        if self.kabsch:
+            # Kabsch algorithm to align x_true and x_noise
+            R = self.kabsch_torch(x_true, x_noise)
+            x_true = torch.matmul(x_true, R.transpose(0, 1))
 
         nodes=torch.arange(n_real)
         edges=torch.cartesian_prod(nodes,nodes)
@@ -125,8 +168,8 @@ def main():
     for  batch in tqdm.tqdm(loader):
         continue
         # visualize the first graph in the batch
-def get_ad2_dataloader(data_path=None,batch_size=512,shuffle=True,num_workers=8):
-    dataset = AA2GraphDataset(data_path=data_path, split="train", max_atom_number=51)
+def get_ad2_dataloader(data_path=None,batch_size=512,shuffle=True,num_workers=8,kabsch=False):
+    dataset = AA2GraphDataset(data_path=data_path, split="train", max_atom_number=51,kabsch=kabsch)
     dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
 
