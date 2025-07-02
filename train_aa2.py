@@ -136,7 +136,7 @@ def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_mode
                 time_weight=torch.ones_like(t)
             time_weight=time_weight.to(device=vector.device)
             time_weight=time_weight.repeat_interleave(g.batch_num_nodes()).view(-1,1)
-            loss_vector=torch.mean((time_weight*(vector - vector_target))**2)
+            loss_vector=torch.mean(time_weight*(vector - vector_target)**2)
             if args['wandb']:
                 wandb.log({"vector_loss": loss_vector.item()})
             loss_vector.backward()

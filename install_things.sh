@@ -16,3 +16,5 @@ mamba install xtb-python -y
 pip install torchdiffeq
 pip install POT
 pip install ema-pytorch
+mamba install -c conda-forge deeptime -y
+pip install torchdyn
