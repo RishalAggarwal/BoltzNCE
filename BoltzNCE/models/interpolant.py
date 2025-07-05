@@ -292,8 +292,8 @@ class Interpolant(torch.nn.Module):
         if self.vector_field is not None:
             tmax=1.0
         tmin=self.tmin
-        # if self.endpoint:
-        #     tmin=1e-3
+        '''if self.endpoint:
+            tmin=1e-3'''
         t = torch.linspace(tmax, tmin, n_timesteps).to('cuda')
         return t
     

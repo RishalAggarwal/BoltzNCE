@@ -1,0 +1,56 @@
+config: configs/train_vector_kabsch_aa2.yaml
+config_save_name: saved_models/trained_vector_9_layer_kabsch_aa2_ema.yaml
+dataloader:
+  batch_size: 512
+  data_path: data/2AA-1-large/
+  kabsch: true
+  num_workers: 8
+  shuffle: true
+ema: true
+ema_model:
+  beta: 0.999
+  update_every: 10
+  update_model_with_ema_every: null
+gvp:
+  n_hidden: 128
+  n_message_gvps: 1
+  n_update_gvps: 1
+  n_vec: 16
+  use_dst_feats: false
+  vector_gating: true
+interpolant:
+  integration_interpolant: linear
+  interpolant_type: linear
+  ot: false
+load_potential_checkpoint: null
+load_vector_field_checkpoint: null
+model_type: vector_field
+optimizer:
+  lr: 0.001
+  weight_decay: 0.0
+optimizer_type: adam
+potential_model:
+  num_layers: 8
+potential_type: gvp
+save_potential_checkpoint: null
+save_vector_field_checkpoint: saved_models/trained_vector_9_layer_kabsch_aa2_ema.pt
+scheduler:
+  factor: 0.5
+  min_lr: 1.0e-05
+  mode: min
+  patience: 20
+  verbose: true
+train_vector:
+  endpoint: false
+  self_conditioning: false
+  tweight_max: 1.5
+training:
+  grad_norm: null
+  num_epochs: 12
+vector_field_model:
+  n_coord_gvps: 1
+  n_features: 76
+  n_layers: 9
+wandb: true
+wandb_name: vector_field_kabsch_training_ema
+wandb_project: BoltzNCE_aa2

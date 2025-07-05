@@ -1,5 +1,5 @@
 import torch
-from BoltzNCE.dataset.aa2_dataloader import get_ad2_dataloader
+from BoltzNCE.dataset.aa2_dataloader import get_aa2_dataloader
 from BoltzNCE.models.ebm import GVP_EBM
 from BoltzNCE.models.vector_field import GVP_vector_field
 from BoltzNCE.models.interpolant import Interpolant
@@ -164,7 +164,7 @@ if __name__ == "__main__":
         wandb.init(project=args['wandb_project'], name=args['wandb_name'])
         wandb.config.update(args)
 
-    dataloader = get_ad2_dataloader(**args['dataloader'])
+    dataloader = get_aa2_dataloader(**args['dataloader'])
     vector_field = GVP_vector_field(**args['vector_field_model'], **args['gvp']).cuda()
     interpolant_obj = Interpolant(h_initial=None, potential_function=None, vector_field=vector_field, **args['interpolant']).cuda()
 
