@@ -23,7 +23,8 @@ generated/
 *.npz
 
 
-## jackys .gitignore, 
+## DO NOT REMOVE PLZ
 *.pyc
 wandb/
 data/*
+BoltzNCE/dataset/
