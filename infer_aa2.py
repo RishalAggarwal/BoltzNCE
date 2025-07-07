@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import mdtraj as md
 import argparse
 import wandb
+import einops
 import sys
 
 from bgflow import MeanFreeNormalDistribution, OpenMMBridge, OpenMMEnergy
@@ -40,7 +41,9 @@ def parse_arguments():
     p.add_argument('--peptide', type=str, default='AA')
     p.add_argument("--divergence", action="store_true",default=True)
     p.add_argument("--no-divergence", action="store_false", dest="divergence")
-    p.add_argument('--compute_metrics', type=bool, default=True)
+    p.add_argument('--compute_metrics', dest='compute_metrics', action='store_true',default = True)
+    p.add_argument('--no-compute_metrics', dest='compute_metrics', action='store_false')
+
     '''p.add_argument("--NLL", action="store_true",default=True)
     p.add_argument("--no-NLL", action="store_false", dest="NLL")'''
     '''p.add_argument("--SDE", action="store_true", default=False)
@@ -356,14 +359,17 @@ if __name__== "__main__":
                 n_dimensions = 3
                 data=remove_mean(npz['positions'][npz['step']%10000==0].reshape(-1, n_atoms*n_dimensions)[:190000], n_atoms, n_dimensions)*scaling
             else:
-                data = np.load(args['data_path'] + args['data_directory'] + f"/{peptide}-traj-arrays.npy", allow_pickle=True).item()[peptide]
-                n_atoms = len(topology.atoms)
+                data = np.load(args['data_path'] + "all_train.npy", allow_pickle=True).item()[peptide]
+                print(data.shape[1]/3)
+                n_atoms = int(data.shape[1]/3) # expand back to b n_atoms, dims
+                
                 n_dimensions = 3
                 data = remove_mean(data.reshape(-1, n_atoms*n_dimensions), n_atoms, n_dimensions)*scaling
             model_samples,symmetry_change=fix_chirality(model_samples, adj_list, atom_types, data, dim)
             traj_samples=md.Trajectory(as_numpy(model_samples)[~symmetry_change], topology=topology)
             plot_ramachandran(traj_samples, plot_name='TBG')
-            if args['compute_metrics']:
+            print(args['compute_metrics'])
+            if args['compute_metrics'] == True:
                 print("########## computing metrics ##########")
                 
                 data=remove_mean(npz['positions'][npz['step']%10000==0].reshape(-1, n_atoms*n_dimensions)[:190000], n_atoms, n_dimensions)*scaling
@@ -427,8 +433,13 @@ if __name__== "__main__":
                 plt.yticks(fontsize=25)
                 wandb.log({"Free energy projection TICA0": wandb.Image(plt)})
     if args['save_generated']:
+        model_samples = einops.rearrange(model_samples,"b n d -> b (n d)")
+        # print(model_samples.shape) #(1000, 114)
+        # print(dlogf_np.shape) #(114000, 1)
         numpy_dict={
             'samples': samples_np,
             'dlogf': dlogf_np,
         }
-        np.savez(args['save_prefix'] + '_numpy_dict.npz', **numpy_dict)    
+        np.savez(args['save_prefix'] + args['peptide'] + '_numpy_dict.npz', **numpy_dict)   
+        train_dict={args['peptide']: model_samples,}
+        np.save(args['save_prefix'] + args['peptide'], train_dict)    
