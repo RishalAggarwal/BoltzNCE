@@ -1,6 +1,6 @@
 import torch
 from BoltzNCE.dataset.aa2_dataloader import get_aa2_dataloader
-from BoltzNCE.models.ebm import GVP_EBM
+from BoltzNCE.models.ebm import GVP_EBM, graphormer_EBM
 from BoltzNCE.models.vector_field import GVP_vector_field
 from BoltzNCE.models.interpolant import Interpolant
 import sys
@@ -39,15 +39,16 @@ def parse_arguments():
     dataloader_group.add_argument('--shuffle', type=bool,required=False, default=True)
     dataloader_group.add_argument('--data_path',type=str,default="data/2AA-1-large/",required=False)
     dataloader_group.add_argument('--kabsch', type=bool,required=False, default=False)
+    dataloader_group.add_argument('--split', type=str,required=False, default='train')
 
     training_group=p.add_argument_group('training')
     training_group.add_argument('--num_epochs', type=int,required=False, default=12)
     training_group.add_argument('--grad_norm', type=float,required=False, default=None)
 
-    '''train_potential_group=p.add_argument_group('train_potential')
+    train_potential_group=p.add_argument_group('train_potential')
     train_potential_group.add_argument('--window_size', type=float,required=False, default=0.025)
     train_potential_group.add_argument('--num_negatives', type=int,required=False, default=1)
-    train_potential_group.add_argument('--nce_weight', type=float,required=False, default=1.0)'''
+    train_potential_group.add_argument('--nce_weight', type=float,required=False, default=1.0)
 
     train_vector_group=p.add_argument_group('train_vector')
     train_vector_group.add_argument('--endpoint', type=bool,required=False, default=False)
@@ -73,7 +74,7 @@ def parse_arguments():
     potential_group=p.add_argument_group('potential_model')
     potential_group.add_argument('--num_layers', type=int,required=False, default=8)
     
-    '''graphormer_group=p.add_argument_group('graphormer')
+    graphormer_group=p.add_argument_group('graphormer')
     graphormer_group.add_argument('--embed_dim', type=int,required=False, default=128)
     graphormer_group.add_argument('--ffn_embed_dim', type=int,required=False, default=128)
     graphormer_group.add_argument('--attention_heads', type=int,required=False, default=32)
@@ -81,7 +82,7 @@ def parse_arguments():
     graphormer_group.add_argument('--attention_dropout', type=float,required=False, default=0.1)
     graphormer_group.add_argument('--input_dropout', type=float,required=False, default=0.1)
     graphormer_group.add_argument('--num_kernel', type=int,required=False, default=50)
-    graphormer_group.add_argument('--blocks', type=int,required=False, default=3)'''
+    graphormer_group.add_argument('--blocks', type=int,required=False, default=3)
 
 
     vector_field_group=p.add_argument_group('vector_field_model')
@@ -155,6 +156,63 @@ def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_mode
         vector_model=ema.ema_model
     return vector_model
 
+def train_potential(args, dataloader, interpolant_obj: Interpolant, potential_model: GVP_EBM, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float,grad_norm: float):
+    #hardcoding arguments for now
+    print('interpolant_type', interpolant_obj.interpolant_type)
+    if args['ema']:
+        ema = EMA(potential_model, beta=0.999, allow_different_devices = True)
+    for epoch in tqdm.tqdm(range(num_epochs)):
+        losses=[]
+        losses_score=[]
+        losses_nce=[]
+        for it,g in enumerate(dataloader):
+            optim_potential.zero_grad()
+            g=g.to('cuda')
+            batch_size=g.batch_size
+            t=torch.rand(batch_size,1).cuda()
+            sigma_t=interpolant_obj.sigma(t)
+            sigma_t=sigma_t.view(-1,1)
+            sigma_t=sigma_t.repeat_interleave(g.batch_num_nodes()).view(-1,1)
+            g=interpolant_obj.get_xt_and_vt(t,g)
+            score_target=g.ndata['x1']
+            #score_target=score_target.view(-1,interpolant_obj.dim)
+            score,ll_positives=potential_model(t,g)
+            #score=score.view(-1,interpolant_obj.dim)
+            loss_score=torch.mean((sigma_t*score + score_target)**2)
+            ll_positives=potential_model(t,g,return_logprob=True)
+            if window_size<1:
+                t_negative=torch.randn(batch_size,num_negatives).cuda() * window_size + t
+            else:
+                t_negative=torch.rand(batch_size,num_negatives).cuda()
+            t_negative=torch.clamp(t_negative,0,1)
+            t_negative=t_negative.transpose(0,1).reshape(-1,1)
+            large_g=dgl.batch([g]* num_negatives)
+            ll_negatives=potential_model(t_negative,large_g,return_logprob=True)
+            ll_negatives=ll_negatives.view(num_negatives,-1).transpose(0,1)
+            loss_nce=-torch.mean(ll_positives-torch.logsumexp(torch.cat([ll_negatives,ll_positives],dim=1),dim=1).view(-1,1))
+            loss=loss_score + nce_weight*loss_nce
+            if args['wandb']:
+                wandb.log({"potential_loss": loss.item()})
+                wandb.log({"potential_score_loss": loss_score.item()})
+                wandb.log({"potential_nce_loss": loss_nce.item()})
+            loss.backward()
+            if grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(potential_model.parameters(), grad_norm)
+            optim_potential.step()
+            if args['ema']:
+                ema.update()
+            losses.append(loss.item())
+            losses_score.append(loss_score.item())
+            losses_nce.append(loss_nce.item())
+            if it % 300 == 0:
+                scheduler_potential.step(sum(losses)/len(losses))
+                losses=[]
+        print(f"Epoch {epoch}: Potential Score Loss: {sum(losses_score)/len(losses_score)}")
+        print(f"Epoch {epoch}: Potential NCE Loss: {sum(losses_nce)/len(losses_nce)}")
+    if args['ema']:
+        potential_model=ema.ema_model
+    return potential_model
+
 
 if __name__ == "__main__":
     args,p=parse_arguments()
@@ -165,9 +223,6 @@ if __name__ == "__main__":
         wandb.config.update(args)
 
     dataloader = get_aa2_dataloader(**args['dataloader'])
-    vector_field = GVP_vector_field(**args['vector_field_model'], **args['gvp']).cuda()
-    interpolant_obj = Interpolant(h_initial=None, potential_function=None, vector_field=vector_field, **args['interpolant']).cuda()
-
     optimizer=torch.optim.Adam
     if args['optimizer_type']=='adam':
         optimizer=torch.optim.Adam
@@ -175,14 +230,28 @@ if __name__ == "__main__":
         optimizer=torch.optim.AdamW
     else:
         raise ValueError("Optimizer type must be either 'adam' or 'adamw'")
-    '''optim_potential=optimizer(potential_model.parameters(), **args['optimizer'])
-    scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])'''
+    vector_field = GVP_vector_field(**args['vector_field_model'], **args['gvp']).cuda()
+    
     optim_vector=optimizer(vector_field.parameters(), **args['optimizer'])
     scheduler_vector=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_vector,**args['scheduler'])
 
-    vector_field=train_vector_field(args, dataloader,interpolant_obj, vector_field , optim_vector, scheduler_vector,**args['training'],**args['train_vector'])
-    torch.save(vector_field.state_dict(), args['save_vector_field_checkpoint'])
-    interpolant_obj.vector_field=vector_field
+    potential_model=None
+    if args['model_type'] == 'potential':
+        potential_model = graphormer_EBM(**args['graphormer'], **args['potential_model']).cuda()
+        optim_potential=optimizer(potential_model.parameters(), **args['optimizer'])
+        scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])
+    
+    interpolant_obj = Interpolant(h_initial=None, potential_function=potential_model, vector_field=vector_field, **args['interpolant']).cuda()
+
+    if args['model_type'] == 'vector_field':
+        vector_field=train_vector_field(args, dataloader,interpolant_obj, vector_field , optim_vector, scheduler_vector,**args['training'],**args['train_vector'])
+        torch.save(vector_field.state_dict(), args['save_vector_field_checkpoint'])
+        interpolant_obj.vector_field=vector_field
+    
+    elif args['model_type'] == 'potential':
+        potential_model=train_potential(args, dataloader,interpolant_obj, potential_model, optim_potential, scheduler_potential,**args['training'],**args['train_potential'])
+        torch.save(potential_model.state_dict(), args['save_potential_checkpoint'])
+        interpolant_obj.potential_function=potential_model
 
     with open(args['config_save_name'], 'w') as f:
         yaml.dump(args, f)

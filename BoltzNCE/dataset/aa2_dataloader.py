@@ -168,8 +168,8 @@ def main():
     for  batch in tqdm.tqdm(loader):
         continue
         # visualize the first graph in the batch
-def get_aa2_dataloader(data_path=None,batch_size=512,shuffle=True,num_workers=8,kabsch=False):
-    dataset = AA2GraphDataset(data_path=data_path, split="train", max_atom_number=51,kabsch=kabsch)
+def get_aa2_dataloader(data_path=None,batch_size=512,shuffle=True,num_workers=8,kabsch=False,split="train"):
+    dataset = AA2GraphDataset(data_path=data_path, split=split, max_atom_number=51,kabsch=kabsch)
     dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
 
