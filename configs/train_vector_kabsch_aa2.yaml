@@ -1,0 +1,23 @@
+wandb: true
+wandb_project: 'BoltzNCE_aa2'
+wandb_name: 'vector_field_kabsch_training_large'
+save_vector_field_checkpoint: 'saved_models/trained_vector_9_layer_kabsch_aa2_ema_large.pt'
+config_save_name: 'saved_models/trained_vector_9_layer_kabsch_aa2_ema_large.yaml'
+model_type: 'vector_field'
+ema: true
+
+vector_field_model:
+  n_layers: 9
+
+gvp:
+  n_hidden: 128
+  n_vec: 32
+  n_message_gvps: 2
+  n_update_gvps: 2
+
+dataloader:
+  kabsch: true
+  batch_size: 256
+
+training:
+  num_epochs: 21

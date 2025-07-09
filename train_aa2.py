@@ -230,25 +230,27 @@ if __name__ == "__main__":
         optimizer=torch.optim.AdamW
     else:
         raise ValueError("Optimizer type must be either 'adam' or 'adamw'")
-    vector_field = GVP_vector_field(**args['vector_field_model'], **args['gvp']).cuda()
     
-    optim_vector=optimizer(vector_field.parameters(), **args['optimizer'])
-    scheduler_vector=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_vector,**args['scheduler'])
-
-    potential_model=None
-    if args['model_type'] == 'potential':
-        potential_model = graphormer_EBM(**args['graphormer'], **args['potential_model']).cuda()
-        optim_potential=optimizer(potential_model.parameters(), **args['optimizer'])
-        scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])
-    
-    interpolant_obj = Interpolant(h_initial=None, potential_function=potential_model, vector_field=vector_field, **args['interpolant']).cuda()
+    interpolant_obj = Interpolant(h_initial=None, potential_function=None, vector_field=None, **args['interpolant']).cuda()
 
     if args['model_type'] == 'vector_field':
+        vector_field = GVP_vector_field(**args['vector_field_model'], **args['gvp']).cuda()
+        pytorch_total_params = sum(p.numel() for p in vector_field.parameters())
+        print(f"Total number of parameters in vector field model: {pytorch_total_params}")
+        interpolant_obj.vector_field=vector_field    
+        optim_vector=optimizer(vector_field.parameters(), **args['optimizer'])
+        scheduler_vector=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_vector,**args['scheduler'])
         vector_field=train_vector_field(args, dataloader,interpolant_obj, vector_field , optim_vector, scheduler_vector,**args['training'],**args['train_vector'])
         torch.save(vector_field.state_dict(), args['save_vector_field_checkpoint'])
         interpolant_obj.vector_field=vector_field
-    
-    elif args['model_type'] == 'potential':
+
+    if args['model_type'] == 'potential':
+        potential_model = graphormer_EBM(**args['graphormer'], **args['potential_model']).cuda()
+        pytorch_total_params = sum(p.numel() for p in potential_model.parameters())
+        print(f"Total number of parameters in potential model: {pytorch_total_params}")
+        interpolant_obj.potential_function=potential_model
+        optim_potential=optimizer(potential_model.parameters(), **args['optimizer'])
+        scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])
         potential_model=train_potential(args, dataloader,interpolant_obj, potential_model, optim_potential, scheduler_potential,**args['training'],**args['train_potential'])
         torch.save(potential_model.state_dict(), args['save_potential_checkpoint'])
         interpolant_obj.potential_function=potential_model

@@ -21,7 +21,10 @@ class AA2GraphDataset(dgl.data.DGLDataset):
 
         # featurize pdbs
         directory = f"/{split}"
-        self.peptides,self.atom_types_dict, self.h_dict = aa2_featurizer(data_path, directory)
+        feature_dir=directory
+        if not os.path.exists(os.path.join(data_path, feature_dir)):
+            feature_dir = 'train'  # fallback to train directory if split not found
+        self.peptides,self.atom_types_dict, self.h_dict = aa2_featurizer(data_path, feature_dir)
 
         # load the numpy trajectories
         arr = np.load(os.path.join(data_path, f"all_{split}.npy"), allow_pickle=True).item()

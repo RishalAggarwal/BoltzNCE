@@ -26,7 +26,7 @@ graphormer:
   blocks: 1
 interpolant:
   dim: 66
-  interpolant_type: linear
+  interpolant_type: trig
   n_dimensions: 3
   num_particles: 22
 load_potential_checkpoint: null

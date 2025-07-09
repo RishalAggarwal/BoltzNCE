@@ -182,6 +182,10 @@ def plot_ramachandran(traj_samples, plot_name=''):
 
 def fix_chirality(samples, adj_list, atom_types, data, dim):
     chirality_centers = find_chirality_centers(adj_list, atom_types)
+    if len(chirality_centers) == 0:
+        print("No chirality centers found, skipping chirality check")
+        symmetry_change = np.zeros(len(samples), dtype=bool)
+        return samples, symmetry_change
     reference_signs = compute_chirality_sign(torch.from_numpy(data.reshape(-1, dim//3, 3))[[1]], chirality_centers)
     symmetry_change = check_symmetry_change(samples, chirality_centers, reference_signs)
     samples[symmetry_change] *=-1
