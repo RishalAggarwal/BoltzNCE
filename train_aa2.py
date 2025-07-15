@@ -40,6 +40,7 @@ def parse_arguments():
     dataloader_group.add_argument('--data_path',type=str,default="data/2AA-1-large/",required=False)
     dataloader_group.add_argument('--kabsch', type=bool,required=False, default=False)
     dataloader_group.add_argument('--split', type=str,required=False, default='train')
+    dataloader_group.add_argument('--biased', type=bool,required=False, default=False)
 
     training_group=p.add_argument_group('training')
     training_group.add_argument('--num_epochs', type=int,required=False, default=12)
@@ -73,7 +74,8 @@ def parse_arguments():
 
     potential_group=p.add_argument_group('potential_model')
     potential_group.add_argument('--num_layers', type=int,required=False, default=8)
-    
+    potential_group.add_argument('--num_features', type=int,required=False, default=76)
+
     graphormer_group=p.add_argument_group('graphormer')
     graphormer_group.add_argument('--embed_dim', type=int,required=False, default=128)
     graphormer_group.add_argument('--ffn_embed_dim', type=int,required=False, default=128)
@@ -140,6 +142,7 @@ def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_mode
             loss_vector=torch.mean(time_weight*(vector - vector_target)**2)
             if args['wandb']:
                 wandb.log({"vector_loss": loss_vector.item()})
+                wandb.log({"learning_rate": optim_vector.param_groups[0]['lr']})
             loss_vector.backward()
             if grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(vector_model.parameters(), grad_norm)
@@ -195,6 +198,7 @@ def train_potential(args, dataloader, interpolant_obj: Interpolant, potential_mo
                 wandb.log({"potential_loss": loss.item()})
                 wandb.log({"potential_score_loss": loss_score.item()})
                 wandb.log({"potential_nce_loss": loss_nce.item()})
+                wandb.log({"learning_rate": optim_potential.param_groups[0]['lr']})
             loss.backward()
             if grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(potential_model.parameters(), grad_norm)
