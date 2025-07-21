@@ -33,6 +33,8 @@ import scipy
 import signal
 import deeptime as dt
 import openmm
+from train_aa2 import train_potential
+from BoltzNCE.dataset.aa2_single_dataloader import get_aa2_single_dataloader
 
 
 def parse_arguments():
@@ -43,6 +45,7 @@ def parse_arguments():
     p.add_argument("--no-divergence", action="store_false", dest="divergence")
     p.add_argument('--compute_metrics', dest='compute_metrics', action='store_true',default = True)
     p.add_argument('--no-compute_metrics', dest='compute_metrics', action='store_false')
+    p.add_argument('--n_epochs', type=int, default=100)
 
     '''p.add_argument("--NLL", action="store_true",default=True)
     p.add_argument("--no-NLL", action="store_false", dest="NLL")'''
@@ -168,6 +171,7 @@ def compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_
     plt.xticks(fontsize=25)
     plt.yticks(fontsize=25)
     wandb.log({prefix + "Free energy projection": wandb.Image(plt)})
+    plt.close()
     tica_model = run_tica(traj_samples_data, lagtime=100)
     features = tica_features(traj_samples_data)
     tics = tica_model.transform(features)
@@ -176,9 +180,11 @@ def compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_
     fig, ax = plt.subplots(figsize=(10,10))
     ax = plot_tic01(ax, tics, f"MD", tics_lims=tics)
     wandb.log({prefix+ "TICA MD": wandb.Image(fig)})
+    plt.close(fig)
     fig, ax = plt.subplots(figsize=(10,10))
     ax = plot_tic01(ax, tics_model, f"TBG", tics_lims=tics)
     wandb.log({prefix+ "TICA TBG": wandb.Image(fig)})
+    plt.close(fig)
     #free energy projection along first TICA component
     grid_data, fes_data = plot_fes(tics[:,0], bw_method=None, weights=None, get_DeltaF=False)
     grid, fes = plot_fes(tics_model[:,0], bw_method=None, weights=None, get_DeltaF=False)
@@ -194,6 +200,7 @@ def compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_
     plt.xticks(fontsize=25)
     plt.yticks(fontsize=25)
     wandb.log({prefix + "Free energy projection TICA0": wandb.Image(plt)})
+    plt.close()
 
 
 def align_topology(sample, reference, scaling, atom_types):
@@ -261,6 +268,7 @@ def plot_ramachandran(traj_samples, plot_name=''):
     ax.yaxis.set_tick_params(labelsize=25)
     ax.set_yticks([])
     wandb.log({plot_name + " Ramachandran plot": wandb.Image(plt)})
+    plt.close(fig)
 
 def fix_chirality(samples, adj_list, atom_types, data, dim):
     chirality_centers = find_chirality_centers(adj_list, atom_types)
@@ -289,6 +297,7 @@ def plot_energy_histograms(classical_target_energies, classical_model_energies, 
 
     plt.title(f"Classical energy distribution", fontsize=45)
     wandb.log({prefix+"Classical energy distribution": wandb.Image(plt)})
+    plt.close()
 
 def plot_fes(
     samples: np.ndarray,
@@ -396,7 +405,7 @@ def update_interpolant_args(args):
     args['interpolant']['num_particles'] = args['dim'] // 3
     return args
 
-def process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args):
+def process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args,prefix=''):
     traj_samples = md.Trajectory(samples_np.reshape(-1, dim//3, 3)/scaling, topology=topology)
     aligned_samples, aligned_idxs = align_samples(samples_np, adj_list, dim, atom_types, scaling)
     traj_samples_aligned = md.Trajectory(aligned_samples/scaling, topology=topology)
@@ -415,8 +424,8 @@ def process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_
     traj_samples=md.Trajectory(as_numpy(model_samples)[~symmetry_change], topology=topology)
     
     if args['compute_metrics'] == True:
-        compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix='')
-    return model_samples
+        compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix)
+    return model_samples,npz,aligned_idxs, symmetry_change, traj_samples
 
 
 if __name__== "__main__":
@@ -445,7 +454,7 @@ if __name__== "__main__":
     args['dim'] = dim
     update_interpolant_args(args)
     
-    potential_model, vector_field, interpolant_obj = load_models(args,h_initial=h_initial,potential=False)
+    potential_model, vector_field, interpolant_obj = load_models(args,h_initial=h_initial,potential=args['model_type']=='potential')
     if potential_model is not None:
         potential_model.eval()
     vector_field.eval()
@@ -456,11 +465,31 @@ if __name__== "__main__":
     samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type)
     print(f"Generated {len(samples_np)} samples")
     if args['model_type']=='vector_field':
-        model_samples=process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args)
+        model_samples,npz,aligned_idxs, symmetry_change, traj_samples =process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args)
     elif args['model_type']=='potential':
-        print("########## computing potential logp")
+        print("########## training and computing potential logp")
+        optim_potential = torch.optim.Adam(potential_model.parameters(), lr=1e-4)
+        scheduler_potential = torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential, mode='min', factor=0.5, patience=20, verbose=True,min_lr=1e-5)
         dlogf_np = get_potential_logp(interpolant_obj, samples_np)
-        model_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args)
+        model_samples,npz,aligned_idxs, symmetry_change, traj_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args,prefix=f"potential_Epoch_0_")
+        samples_np =(model_samples.reshape(-1, dim)[~symmetry_change]*30).cpu().detach().numpy()
+        n_atoms = samples_np.shape[1]//3 # expand back to b n_atoms, dims
+        n_dimensions = 3
+        samples_np =samples_np.reshape(-1, n_atoms*n_dimensions)
+        aligned_idxs = np.arange(len(samples_np))
+        symmetry_change = np.zeros(len(samples_np), dtype=bool)
+        _, dataloader = get_aa2_single_dataloader(samples_np,h_initial,256,True,0,kabsch=True)
+        for i in range(args['n_epochs']):
+            print(f"########## Epoch {i+1}")
+            potential_model.train()
+            potential_model=train_potential(args, dataloader, interpolant_obj, potential_model, optim_potential, scheduler_potential, num_epochs=1, window_size=0.025, num_negatives=1, nce_weight=1.0,grad_norm=None)
+            potential_model.eval()
+            interpolant_obj.potential_function = potential_model
+            if i==5:
+                optim_potential.param_groups[0]['lr'] = 1e-4
+            if i % 10 == 0:
+                dlogf_np = get_potential_logp(interpolant_obj, samples_np)
+                compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_")
     else:
         raise ValueError("model_type not recognized, should be either vector_field or potential")   
     if args['save_generated']:

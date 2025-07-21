@@ -4,7 +4,7 @@
 #SBATCH --partition=koes_gpu
 #SBATCH --gres=gpu:1
 #SBATCH -c 12
-#SBATCH --constraint=L40
+#SBATCH --constraint=C8
 #SBATCH --mail-user=jackychen@pitt.edu
 #SBATCH --mail-type=ALL
 #SBATCH --array=0-199%20           # 200 prefixes → indices 0 through 199
@@ -31,8 +31,8 @@ prefix=${prefixes[$SLURM_ARRAY_TASK_ID]}
 source activate boltznce
 # run your inference with the selected prefix
 python infer_aa2.py \
-  --config configs/infer_vector_aa2_kabsch_ema.yaml \
-  --wandb_inference_name inference_aa2_vector_${prefix}_100k \
+  --config configs/infer_vector_aa2_biased.yaml \
+  --wandb_inference_name inference_aa2_vector_biased_${prefix}_100k \
   --peptide "${prefix}" \
   --save_generated \
   --save_prefix "./generated/train/" \

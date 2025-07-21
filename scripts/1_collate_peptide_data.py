@@ -39,5 +39,5 @@ def collate_npy_files(input_dir, output_path):
 
 if __name__ == "__main__":
     input_directory = "../generated/train"  # change this if your directory is different
-    output_file = "../generated/all_gen.npy"
+    output_file = "../data/all_gen_biased.npy"
     collate_npy_files(input_directory, output_file)

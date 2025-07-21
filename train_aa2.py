@@ -159,7 +159,7 @@ def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_mode
         vector_model=ema.ema_model
     return vector_model
 
-def train_potential(args, dataloader, interpolant_obj: Interpolant, potential_model: GVP_EBM, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float,grad_norm: float):
+def train_potential(args, dataloader, interpolant_obj: Interpolant, potential_model, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float,grad_norm: float):
     #hardcoding arguments for now
     print('interpolant_type', interpolant_obj.interpolant_type)
     if args['ema']:

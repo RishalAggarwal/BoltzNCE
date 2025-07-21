@@ -14,6 +14,7 @@ def load_models(args,h_initial,potential=True):
         print(f"Total number of parameters in potential model: {pytorch_total_params}")
         if args['load_potential_checkpoint'] is not None:
             potential_model.load_state_dict(torch.load(args['load_potential_checkpoint']))
+            print(f"Loaded potential model from {args['load_potential_checkpoint']}")
     else:
         potential_model=None
     vector_field=GVP_vector_field(**args['vector_field_model'],**args['gvp']).cuda()
