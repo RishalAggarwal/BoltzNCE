@@ -33,6 +33,8 @@ import scipy
 import signal
 import deeptime as dt
 import openmm
+from train_aa2 import train_potential
+from BoltzNCE.dataset.aa2_single_dataloader import get_aa2_single_dataloader
 
 
 def parse_arguments():
@@ -43,6 +45,7 @@ def parse_arguments():
     p.add_argument("--no-divergence", action="store_false", dest="divergence")
     p.add_argument('--compute_metrics', dest='compute_metrics', action='store_true',default = True)
     p.add_argument('--no-compute_metrics', dest='compute_metrics', action='store_false')
+    p.add_argument('--n_epochs', type=int, default=100)
 
     '''p.add_argument("--NLL", action="store_true",default=True)
     p.add_argument("--no-NLL", action="store_false", dest="NLL")'''
@@ -114,6 +117,92 @@ def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral
     interpolant_obj.interpolant_type=interpolant_placeholder
     return samples_np,dlogp_all
 
+def get_potential_logp(model: Interpolant,samples):
+    dlogf_all=[]
+    samples_torch=torch.from_numpy(samples).float().cuda()
+    samples_torch = samples_torch/model.scaling
+    batch_size=1000
+    i=0
+    while (i+batch_size)<len(samples_torch):
+        samples_prob=samples_torch[i:i+batch_size]
+        dlogf=model.log_prob_forward(samples_prob)
+        dlogf_all.append(dlogf.cpu().detach())
+        i=i+batch_size
+    samples_prob=samples_torch[i:len(samples_torch)]
+    dlogf=model.log_prob_forward(samples_prob)
+    dlogf_all.append(dlogf.cpu().detach())
+    dlogf_all=torch.cat(dlogf_all,dim=0)
+    dlogf_all=dlogf_all-torch.logsumexp(dlogf_all,dim=(0,1))
+    dlogf_np=dlogf_all.cpu().detach().numpy()
+    return dlogf_np
+
+def compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=''):  
+    plot_ramachandran(traj_samples, plot_name=prefix+'TBG')
+    data=remove_mean(npz['positions'][npz['step']%10000==0].reshape(-1, n_atoms*n_dimensions)[:190000], n_atoms, n_dimensions)*scaling
+    traj_samples_data = md.Trajectory(data.reshape(-1, dim//3, 3)/scaling, topology=topology)
+    plot_ramachandran(traj_samples_data, plot_name=prefix+'MD')
+    pdb = openmm.app.PDBFile(pdb_path)
+    forcefield = openmm.app.ForceField("amber14-all.xml", "implicit/obc1.xml")
+
+    system = forcefield.createSystem(pdb.topology, nonbondedMethod=openmm.app.CutoffNonPeriodic,
+            nonbondedCutoff=2.0*openmm.unit.nanometer, constraints=None)
+    integrator = openmm.LangevinMiddleIntegrator(310*openmm.unit.kelvin, 0.3/openmm.unit.picosecond, 0.5*openmm.unit.femtosecond)
+    openmm_energy = OpenMMEnergy(bridge=OpenMMBridge(system, integrator, platform_name="CUDA"))
+    classical_model_energies = as_numpy(openmm_energy.energy(model_samples.reshape(-1, dim)[~symmetry_change]))
+    classical_target_energies = as_numpy(openmm_energy.energy(torch.from_numpy(data)[::10].reshape(-1, dim)/scaling))
+    idxs = np.array(aligned_idxs)[~symmetry_change]
+    log_w_np = -classical_model_energies - as_numpy(dlogf_np.reshape(-1,1)[idxs])
+    log_w_torch=torch.tensor(log_w_np)
+    log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
+    log_w_np=log_w_torch.numpy()
+    wandb.log({prefix + "Sampling efficiency Mean": sampling_efficiency(torch.from_numpy(log_w_np)).item()})
+    plot_energy_histograms(classical_target_energies, classical_model_energies, log_w_np, prefix=prefix)
+    grid_left_data, fes_left_data, grid_right_data, fes_right_data = phi_to_grid(md.compute_phi(traj_samples_data)[1].flatten())
+    grid_left, fes_left, grid_right, fes_right = phi_to_grid(md.compute_phi(traj_samples)[1].flatten())
+    grid_left_weighted, fes_left_weighted, grid_right_weighted, fes_right_weighted = phi_to_grid(md.compute_phi(traj_samples)[1].flatten(), weights=np.exp(log_w_np))
+    plt.figure(figsize=(16,9))
+    plt.plot(np.hstack([grid_left_data, grid_right_data]), np.hstack([fes_left_data, fes_right_data]), linewidth=5, label="MD")
+    plt.plot(np.hstack([grid_left, grid_right]), np.hstack([fes_left, fes_right]), linewidth=5,linestyle="--", label="TBG")
+    plt.plot(np.hstack([grid_left_weighted, grid_right_weighted]), np.hstack([fes_left_weighted, fes_right_weighted]), linewidth=5, linestyle="--", label="TBG reweighted")
+    plt.legend(fontsize=30)
+    plt.title(r"Free energy projection $\varphi$", fontsize=45)
+    plt.xlabel(r"$\varphi$", fontsize=45)
+    plt.ylabel("Free energy / $k_B T$", fontsize=45)
+    plt.xticks(fontsize=25)
+    plt.yticks(fontsize=25)
+    wandb.log({prefix + "Free energy projection": wandb.Image(plt)})
+    plt.close()
+    tica_model = run_tica(traj_samples_data, lagtime=100)
+    features = tica_features(traj_samples_data)
+    tics = tica_model.transform(features)
+    feat_model = tica_features(traj_samples)
+    tics_model = tica_model.transform(feat_model)
+    fig, ax = plt.subplots(figsize=(10,10))
+    ax = plot_tic01(ax, tics, f"MD", tics_lims=tics)
+    wandb.log({prefix+ "TICA MD": wandb.Image(fig)})
+    plt.close(fig)
+    fig, ax = plt.subplots(figsize=(10,10))
+    ax = plot_tic01(ax, tics_model, f"TBG", tics_lims=tics)
+    wandb.log({prefix+ "TICA TBG": wandb.Image(fig)})
+    plt.close(fig)
+    #free energy projection along first TICA component
+    grid_data, fes_data = plot_fes(tics[:,0], bw_method=None, weights=None, get_DeltaF=False)
+    grid, fes = plot_fes(tics_model[:,0], bw_method=None, weights=None, get_DeltaF=False)
+    grid_weighted,fes_weighted = plot_fes(tics_model[:,0], bw_method=None, weights=np.exp(log_w_np), get_DeltaF=False)
+    plt.figure(figsize=(16,9))
+    plt.plot(grid_data, fes_data, linewidth=5, label="MD")
+    plt.plot(grid, fes, linewidth=5, linestyle="--", label="TBG")
+    plt.plot(grid_weighted, fes_weighted, linewidth=5, linestyle="--", label="TBG reweighted")
+    plt.title(r"Free energy projection TICA", fontsize=45)
+    plt.xlabel("TIC0", fontsize=45)
+    plt.ylabel("Free energy / $k_B T$", fontsize=45)
+    plt.legend(fontsize=30)
+    plt.xticks(fontsize=25)
+    plt.yticks(fontsize=25)
+    wandb.log({prefix + "Free energy projection TICA0": wandb.Image(plt)})
+    plt.close()
+
+
 def align_topology(sample, reference, scaling, atom_types):
     sample = sample.reshape(-1, 3)
     all_dists = scipy.spatial.distance.cdist(sample, sample)
@@ -179,6 +268,7 @@ def plot_ramachandran(traj_samples, plot_name=''):
     ax.yaxis.set_tick_params(labelsize=25)
     ax.set_yticks([])
     wandb.log({plot_name + " Ramachandran plot": wandb.Image(plt)})
+    plt.close(fig)
 
 def fix_chirality(samples, adj_list, atom_types, data, dim):
     chirality_centers = find_chirality_centers(adj_list, atom_types)
@@ -194,7 +284,7 @@ def fix_chirality(samples, adj_list, atom_types, data, dim):
     wandb.log({"Correct symmetry rate": (~symmetry_change).sum()/len(samples)})
     return samples, symmetry_change
 
-def plot_energy_histograms(classical_target_energies, classical_model_energies, log_w_np):
+def plot_energy_histograms(classical_target_energies, classical_model_energies, log_w_np,prefix=''):
     plt.figure(figsize=(16,9))
     range_limits = (classical_target_energies.min()-10,classical_target_energies.max()+100)
     plt.hist(classical_target_energies, bins=100, alpha=0.5, range=range_limits,density=True, label="MD")
@@ -206,7 +296,8 @@ def plot_energy_histograms(classical_target_energies, classical_model_energies, 
     plt.xticks(fontsize=25)
 
     plt.title(f"Classical energy distribution", fontsize=45)
-    wandb.log({"Classical energy distribution": wandb.Image(plt)})
+    wandb.log({prefix+"Classical energy distribution": wandb.Image(plt)})
+    plt.close()
 
 def plot_fes(
     samples: np.ndarray,
@@ -314,6 +405,28 @@ def update_interpolant_args(args):
     args['interpolant']['num_particles'] = args['dim'] // 3
     return args
 
+def process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args,prefix=''):
+    traj_samples = md.Trajectory(samples_np.reshape(-1, dim//3, 3)/scaling, topology=topology)
+    aligned_samples, aligned_idxs = align_samples(samples_np, adj_list, dim, atom_types, scaling)
+    traj_samples_aligned = md.Trajectory(aligned_samples/scaling, topology=topology)
+    model_samples = torch.from_numpy(traj_samples_aligned.xyz)
+    if args['data_directory']=='/test':
+        npz=np.load(args['data_path'] + args['data_directory'] + f"/{peptide}-traj-arrays.npz")
+        n_atoms = npz['positions'].shape[1]
+        n_dimensions = 3
+        data=remove_mean(npz['positions'][npz['step']%10000==0].reshape(-1, n_atoms*n_dimensions)[:190000], n_atoms, n_dimensions)*scaling
+    else:
+        data = np.load(args['data_path'] + "all_train.npy", allow_pickle=True).item()[peptide]
+        n_atoms = int(data.shape[1]/3) # expand back to b n_atoms, dims
+        n_dimensions = 3
+        data = remove_mean(data.reshape(-1, n_atoms*n_dimensions), n_atoms, n_dimensions)*scaling
+    model_samples,symmetry_change=fix_chirality(model_samples, adj_list, atom_types, data, dim)
+    traj_samples=md.Trajectory(as_numpy(model_samples)[~symmetry_change], topology=topology)
+    
+    if args['compute_metrics'] == True:
+        compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix)
+    return model_samples,npz,aligned_idxs, symmetry_change, traj_samples
+
 
 if __name__== "__main__":
     args,p=parse_arguments()
@@ -341,101 +454,44 @@ if __name__== "__main__":
     args['dim'] = dim
     update_interpolant_args(args)
     
-    potential_model, vector_field, interpolant_obj = load_models(args,h_initial=h_initial,potential=False)
+    potential_model, vector_field, interpolant_obj = load_models(args,h_initial=h_initial,potential=args['model_type']=='potential')
     if potential_model is not None:
         potential_model.eval()
     vector_field.eval()
     integral_type = 'ode'
     if args['divergence']==True:
         integral_type='ode_divergence'
+    print("########## generating initial samples")
+    samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type)
+    print(f"Generated {len(samples_np)} samples")
     if args['model_type']=='vector_field':
-            ### generating initial samples
-            print("########## generating initial samples")
-            samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type)
-            print(f"Generated {len(samples_np)} samples")
-            traj_samples = md.Trajectory(samples_np.reshape(-1, dim//3, 3)/scaling, topology=topology)
-            aligned_samples, aligned_idxs = align_samples(samples_np, adj_list, dim, atom_types, scaling)
-            traj_samples_aligned = md.Trajectory(aligned_samples/scaling, topology=topology)
-            model_samples = torch.from_numpy(traj_samples_aligned.xyz)
-            if args['data_directory']=='/test':
-                npz=np.load(args['data_path'] + args['data_directory'] + f"/{peptide}-traj-arrays.npz")
-                n_atoms = npz['positions'].shape[1]
-                n_dimensions = 3
-                data=remove_mean(npz['positions'][npz['step']%10000==0].reshape(-1, n_atoms*n_dimensions)[:190000], n_atoms, n_dimensions)*scaling
-            else:
-                data = np.load(args['data_path'] + "all_train.npy", allow_pickle=True).item()[peptide]
-                print(data.shape[1]/3)
-                n_atoms = int(data.shape[1]/3) # expand back to b n_atoms, dims
-                
-                n_dimensions = 3
-                data = remove_mean(data.reshape(-1, n_atoms*n_dimensions), n_atoms, n_dimensions)*scaling
-            model_samples,symmetry_change=fix_chirality(model_samples, adj_list, atom_types, data, dim)
-            traj_samples=md.Trajectory(as_numpy(model_samples)[~symmetry_change], topology=topology)
-            plot_ramachandran(traj_samples, plot_name='TBG')
-            print(args['compute_metrics'])
-            if args['compute_metrics'] == True:
-                print("########## computing metrics ##########")
-                
-                data=remove_mean(npz['positions'][npz['step']%10000==0].reshape(-1, n_atoms*n_dimensions)[:190000], n_atoms, n_dimensions)*scaling
-                traj_samples_data = md.Trajectory(data.reshape(-1, dim//3, 3)/scaling, topology=topology)
-                plot_ramachandran(traj_samples_data, plot_name='MD')
-                pdb = openmm.app.PDBFile(pdb_path)
-                forcefield = openmm.app.ForceField("amber14-all.xml", "implicit/obc1.xml")
-
-                system = forcefield.createSystem(pdb.topology, nonbondedMethod=openmm.app.CutoffNonPeriodic,
-                        nonbondedCutoff=2.0*openmm.unit.nanometer, constraints=None)
-                integrator = openmm.LangevinMiddleIntegrator(310*openmm.unit.kelvin, 0.3/openmm.unit.picosecond, 0.5*openmm.unit.femtosecond)
-                openmm_energy = OpenMMEnergy(bridge=OpenMMBridge(system, integrator, platform_name="CUDA"))
-                classical_model_energies = as_numpy(openmm_energy.energy(model_samples.reshape(-1, dim)[~symmetry_change]))
-                classical_target_energies = as_numpy(openmm_energy.energy(torch.from_numpy(data)[::10].reshape(-1, dim)/scaling))
-                idxs = np.array(aligned_idxs)[~symmetry_change]
-                log_w_np = -classical_model_energies - as_numpy(dlogf_np.reshape(-1,1)[idxs])
-                log_w_torch=torch.tensor(log_w_np)
-                log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
-                log_w_np=log_w_torch.numpy()
-                wandb.log({"Sampling efficiency Mean": sampling_efficiency(torch.from_numpy(log_w_np)).item()})
-                plot_energy_histograms(classical_target_energies, classical_model_energies, log_w_np)
-                grid_left_data, fes_left_data, grid_right_data, fes_right_data = phi_to_grid(md.compute_phi(traj_samples_data)[1].flatten())
-                grid_left, fes_left, grid_right, fes_right = phi_to_grid(md.compute_phi(traj_samples)[1].flatten())
-                grid_left_weighted, fes_left_weighted, grid_right_weighted, fes_right_weighted = phi_to_grid(md.compute_phi(traj_samples)[1].flatten(), weights=np.exp(log_w_np))
-                plt.figure(figsize=(16,9))
-                plt.plot(np.hstack([grid_left_data, grid_right_data]), np.hstack([fes_left_data, fes_right_data]), linewidth=5, label="MD")
-                plt.plot(np.hstack([grid_left, grid_right]), np.hstack([fes_left, fes_right]), linewidth=5,linestyle="--", label="TBG")
-                plt.plot(np.hstack([grid_left_weighted, grid_right_weighted]), np.hstack([fes_left_weighted, fes_right_weighted]), linewidth=5, linestyle="--", label="TBG reweighted")
-                plt.legend(fontsize=30)
-                plt.title(r"Free energy projection $\varphi$", fontsize=45)
-                plt.xlabel(r"$\varphi$", fontsize=45)
-                plt.ylabel("Free energy / $k_B T$", fontsize=45)
-                plt.xticks(fontsize=25)
-                plt.yticks(fontsize=25)
-                plt.ylim(-0.5,13)
-                wandb.log({"Free energy projection": wandb.Image(plt)})
-                tica_model = run_tica(traj_samples_data, lagtime=100)
-                features = tica_features(traj_samples_data)
-                tics = tica_model.transform(features)
-                feat_model = tica_features(traj_samples)
-                tics_model = tica_model.transform(feat_model)
-                fig, ax = plt.subplots(figsize=(10,10))
-                ax = plot_tic01(ax, tics, f"MD", tics_lims=tics)
-                wandb.log({"TICA MD": wandb.Image(fig)})
-                fig, ax = plt.subplots(figsize=(10,10))
-                ax = plot_tic01(ax, tics_model, f"TBG", tics_lims=tics)
-                wandb.log({"TICA TBG": wandb.Image(fig)})
-                #free energy projection along first TICA component
-                grid_data, fes_data = plot_fes(tics[:,0], bw_method=None, weights=None, get_DeltaF=False)
-                grid, fes = plot_fes(tics_model[:,0], bw_method=None, weights=None, get_DeltaF=False)
-                grid_weighted,fes_weighted = plot_fes(tics_model[:,0], bw_method=None, weights=np.exp(log_w_np), get_DeltaF=False)
-                plt.figure(figsize=(16,9))
-                plt.plot(grid_data, fes_data, linewidth=5, label="MD")
-                plt.plot(grid, fes, linewidth=5, linestyle="--", label="TBG")
-                plt.plot(grid_weighted, fes_weighted, linewidth=5, linestyle="--", label="TBG reweighted")
-                plt.title(r"Free energy projection TICA", fontsize=45)
-                plt.xlabel("TIC0", fontsize=45)
-                plt.ylabel("Free energy / $k_B T$", fontsize=45)
-                plt.legend(fontsize=30)
-                plt.xticks(fontsize=25)
-                plt.yticks(fontsize=25)
-                wandb.log({"Free energy projection TICA0": wandb.Image(plt)})
+        model_samples,npz,aligned_idxs, symmetry_change, traj_samples =process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args)
+    elif args['model_type']=='potential':
+        print("########## training and computing potential logp")
+        optim_potential = torch.optim.Adam(potential_model.parameters(), lr=1e-4)
+        scheduler_potential = torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential, mode='min', factor=0.5, patience=20, verbose=True,min_lr=1e-5)
+        dlogf_np = get_potential_logp(interpolant_obj, samples_np)
+        model_samples,npz,aligned_idxs, symmetry_change, traj_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args,prefix=f"potential_Epoch_0_")
+        samples_np =(model_samples.reshape(-1, dim)[~symmetry_change]*30).cpu().detach().numpy()
+        n_atoms = samples_np.shape[1]//3 # expand back to b n_atoms, dims
+        n_dimensions = 3
+        samples_np =samples_np.reshape(-1, n_atoms*n_dimensions)
+        aligned_idxs = np.arange(len(samples_np))
+        symmetry_change = np.zeros(len(samples_np), dtype=bool)
+        _, dataloader = get_aa2_single_dataloader(samples_np,h_initial,256,True,0,kabsch=True)
+        for i in range(args['n_epochs']):
+            print(f"########## Epoch {i+1}")
+            potential_model.train()
+            potential_model=train_potential(args, dataloader, interpolant_obj, potential_model, optim_potential, scheduler_potential, num_epochs=1, window_size=0.025, num_negatives=1, nce_weight=1.0,grad_norm=None)
+            potential_model.eval()
+            interpolant_obj.potential_function = potential_model
+            if i==5:
+                optim_potential.param_groups[0]['lr'] = 1e-4
+            if i % 10 == 0:
+                dlogf_np = get_potential_logp(interpolant_obj, samples_np)
+                compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_")
+    else:
+        raise ValueError("model_type not recognized, should be either vector_field or potential")   
     if args['save_generated']:
         model_samples = einops.rearrange(model_samples,"b n d -> b (n d)")
         # print(model_samples.shape) #(1000, 114)

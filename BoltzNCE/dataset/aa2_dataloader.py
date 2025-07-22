@@ -8,6 +8,7 @@ import tqdm
 from torch.utils.data import Dataset, DataLoader
 from bgflow import MeanFreeNormalDistribution
 from .aa2_dataset import aa2_featurizer
+from scipy.stats import vonmises
 
 
 
@@ -15,13 +16,13 @@ from .aa2_dataset import aa2_featurizer
 
 # --- Dataset class with x1 as prior (noise), x0 as true data ---
 class AA2GraphDataset(dgl.data.DGLDataset):
-    def __init__(self, data_path, split="train", max_atom_number=51,kabsch=False):
+    def __init__(self, data_path, split="train", max_atom_number=51,kabsch=False,biased=False):
         self.max_atoms = max_atom_number
         self.kabsch= kabsch
 
         # featurize pdbs
-        directory = f"/{split}"
-        feature_dir=directory
+        self.directory = f"/{split}"
+        feature_dir=self.directory
         if not os.path.exists(os.path.join(data_path, feature_dir)):
             feature_dir = 'train'  # fallback to train directory if split not found
         self.peptides,self.atom_types_dict, self.h_dict = aa2_featurizer(data_path, feature_dir)
@@ -29,12 +30,19 @@ class AA2GraphDataset(dgl.data.DGLDataset):
         # load the numpy trajectories
         arr = np.load(os.path.join(data_path, f"all_{split}.npy"), allow_pickle=True).item()
         self.data = {pep: arr[pep] for pep in self.peptides}
-
-
-        # build (pep, frame) index list
-        n_frames = len(next(iter(self.data.values())))
-        self.samples = [(pep, frame) for pep in self.peptides for frame in range(n_frames)]
-
+        if biased:
+            kappa = 10.0
+            for pep in self.peptides:
+                pdb_path=os.path.join(data_path,feature_dir,f"{pep}-traj-state0.pdb")
+                topology=md.load_topology(pdb_path)
+                n_atoms = self.h_dict[pep].shape[0]
+                coords= self.data[pep].reshape(-1, n_atoms, 3)
+                pep_traj = md.Trajectory(coords, topology)
+                phi = md.compute_phi(pep_traj)[1].flatten()
+                weights=150*vonmises.pdf(phi-1., kappa)+1
+                weighted_idx=np.random.choice(np.arange(len(self.data[pep])), len(self.data[pep]), p=weights/weights.sum(), replace=True)
+                self.data[pep] = self.data[pep][weighted_idx]
+        self.samples = [(pep, frame) for pep in self.peptides for frame in range(len(self.data[pep]))] 
         # per-peptide prior distributions
         '''self.priors = {}
         for pep in self.peptides:
@@ -105,7 +113,11 @@ class AA2GraphDataset(dgl.data.DGLDataset):
             h = torch.cat([h, pad], dim=0)'''
 
         # x0: true coordinates
-        x_true = torch.from_numpy(self.data[pep][frame]).float()
+        if 'gen' not in self.directory:
+            x_true = torch.from_numpy(self.data[pep][frame]).float()
+        else:
+            x_true = self.data[pep][frame].float()
+            x_true = x_true*30 # convert to Angstroms
         x_true = x_true.view(-1, 3)  # ensure shape is (n_atoms, 3)
         #mean center the coordinates
         x_true = x_true - x_true.mean(dim=0, keepdim=True)
@@ -171,8 +183,8 @@ def main():
     for  batch in tqdm.tqdm(loader):
         continue
         # visualize the first graph in the batch
-def get_aa2_dataloader(data_path=None,batch_size=512,shuffle=True,num_workers=8,kabsch=False,split="train"):
-    dataset = AA2GraphDataset(data_path=data_path, split=split, max_atom_number=51,kabsch=kabsch)
+def get_aa2_dataloader(data_path=None,batch_size=512,shuffle=True,num_workers=8,kabsch=False,split="train",biased=False):
+    dataset = AA2GraphDataset(data_path=data_path, split=split, max_atom_number=51,kabsch=kabsch, biased=biased)
     dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
 

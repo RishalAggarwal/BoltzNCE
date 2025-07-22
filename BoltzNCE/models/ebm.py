@@ -7,10 +7,10 @@ from.graphormer import Graphormer3D
 
 
 class GVP_EBM(torch.nn.Module):
-    def __init__(self, n_features=21, num_layers=8, n_hidden=64,n_vec=16,n_message_gvps=1,n_update_gvps=1,num_particles=22,use_dst_feats=False,vector_gating=True):
+    def __init__(self, num_features=21, num_layers=8, n_hidden=64,n_vec=16,n_message_gvps=1,n_update_gvps=1,num_particles=22,use_dst_feats=False,vector_gating=True):
         super(GVP_EBM, self).__init__()
         self.n_vec_channels=n_vec
-        self.initial_embedding = torch.nn.Sequential(torch.nn.Linear(n_features+1, n_hidden),nn.SiLU())
+        self.initial_embedding = torch.nn.Sequential(torch.nn.Linear(num_features+1, n_hidden),nn.SiLU())
         self.convs=torch.nn.ModuleList([GVPConv(scalar_size=n_hidden,vector_size=n_vec,n_message_gvps=n_message_gvps,n_update_gvps=n_update_gvps,use_dst_feats=use_dst_feats,vector_gating=vector_gating,coords_range=10,scalar_activation=SwishBeta) for _ in range(num_layers)]) 
         self.output = torch.nn.Sequential(torch.nn.Linear(n_hidden, n_hidden,bias=True), 
                                           nn.SiLU(),
@@ -56,7 +56,7 @@ class graphormer_EBM(torch.nn.Module):
             torch_grad=True
             t.requires_grad_(True)
             x_init.requires_grad_(True)
-        ts=t.repeat_interleave(self.num_particles)
+        ts=t.repeat_interleave(data.batch_num_nodes())
         ts=ts.view(-1,1)
         padded_feats, padded_pos,padded_ts = self.graph_to_padded_sequenece(data,x_init,ts)
         with torch.set_grad_enabled(torch_grad):
