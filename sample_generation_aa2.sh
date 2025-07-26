@@ -43,4 +43,18 @@ python infer_aa2.py \
   --no-compute_metrics \
 
 
+python infer_aa2.py \
+  --config configs/infer_vector_aa2_kabsch_ema.yaml \
+  --wandb_inference_name inference_aa2_vector_GG_100k \
+  --peptide GG \
+  --save_generated \
+  --save_prefix "./generated/train/" \
+  --no-divergence \
+  --data_path data/2AA-1-large/ \
+  --data_directory train/ \
+  --n_sample_batches 100 \
+  --no-compute_metrics \
+
+
+
 
