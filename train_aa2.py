@@ -213,6 +213,7 @@ def train_potential(args, dataloader, interpolant_obj: Interpolant, potential_mo
                 losses=[]
         print(f"Epoch {epoch}: Potential Score Loss: {sum(losses_score)/len(losses_score)}")
         print(f"Epoch {epoch}: Potential NCE Loss: {sum(losses_nce)/len(losses_nce)}")
+        torch.save(potential_model.state_dict(), args['save_potential_checkpoint'])
     if args['ema']:
         potential_model=ema.ema_model
     return potential_model

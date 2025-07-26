@@ -84,17 +84,20 @@ class Interpolant(torch.nn.Module):
             coords_prior = torch.randn_like(g.ndata['x'])
             coords_shape=g.ndata['x'].shape
             coords_sample=g.ndata['x']
-            if self.ot:
-                coords_prior=coords_prior.view(-1,self.dim)
-                coords_sample=coords_sample.view(-1,self.dim)
-                row_ind, col_ind = self.OT_coupling(coords_sample,coords_prior)
-                coords_prior=coords_prior[col_ind]
-                coords_prior=coords_prior.view(coords_shape)
-                coords_sample=coords_sample.view(coords_shape)
-            g.ndata['x0']=coords_sample.clone()
-            g.ndata['x1']=coords_prior
         else:
-            g.ndata['x']=g.ndata['x0'].clone()
+            coords_prior = g.ndata['x1']
+            coords_sample = g.ndata['x0']
+            coords_shape=g.ndata['x1'].shape
+        if self.ot:
+            coords_prior=coords_prior.view(-1,self.dim)
+            coords_sample=coords_sample.view(-1,self.dim)
+            row_ind, col_ind = self.OT_coupling(coords_sample,coords_prior)
+            coords_prior=coords_prior[col_ind]
+            coords_prior=coords_prior.view(coords_shape)
+            coords_sample=coords_sample.view(coords_shape)
+        g.ndata['x0']=coords_sample.clone()
+        g.ndata['x1']=coords_prior
+        g.ndata['x']=g.ndata['x0'].clone()
         g.ndata['xt'] = alpha_t_extended*g.ndata['x'] + sigma_t_extended*g.ndata['x1']
         g.ndata['v'] = alpha_t_dot_extended*g.ndata['x'] + sigma_t_dot_extended*g.ndata['x1']
         g.ndata['x']=g.ndata['xt']

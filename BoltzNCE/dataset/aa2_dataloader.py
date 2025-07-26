@@ -39,7 +39,12 @@ class AA2GraphDataset(dgl.data.DGLDataset):
                 coords= self.data[pep].reshape(-1, n_atoms, 3)
                 pep_traj = md.Trajectory(coords, topology)
                 phi = md.compute_phi(pep_traj)[1].flatten()
-                weights=150*vonmises.pdf(phi-1., kappa)+1
+                pos_phi = (phi > 0.) & (phi < 2.)
+                if len(phi[pos_phi]) == 0 or len(phi[~pos_phi]) == 0:
+                    print(f"Skipping weighting {pep} due to absent mode")
+                    continue
+                weights=(len(phi[~pos_phi])/len(phi[pos_phi]))*vonmises.pdf(phi-1, kappa)+1
+                #weights=150*vonmises.pdf(phi-1., kappa)+1
                 weighted_idx=np.random.choice(np.arange(len(self.data[pep])), len(self.data[pep]), p=weights/weights.sum(), replace=True)
                 self.data[pep] = self.data[pep][weighted_idx]
         self.samples = [(pep, frame) for pep in self.peptides for frame in range(len(self.data[pep]))] 

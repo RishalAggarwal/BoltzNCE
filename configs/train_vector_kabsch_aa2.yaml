@@ -1,8 +1,8 @@
 wandb: true
 wandb_project: 'BoltzNCE_aa2'
-wandb_name: 'vector_field_kabsch_training_biased'
-save_vector_field_checkpoint: 'saved_models/trained_vector_9_layer_kabsch_aa2_ema_biased.pt'
-config_save_name: 'saved_models/trained_vector_9_layer_kabsch_aa2_ema_biased.yaml'
+wandb_name: 'vector_field_kabsch_training_correctedbias'
+save_vector_field_checkpoint: 'saved_models/trained_vector_9_layer_kabsch_aa2_ema_correctedbias.pt'
+config_save_name: 'saved_models/trained_vector_9_layer_kabsch_aa2_ema_correctedbias.yaml'
 model_type: 'vector_field'
 ema: true
 
