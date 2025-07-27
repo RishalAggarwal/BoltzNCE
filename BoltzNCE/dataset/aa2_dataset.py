@@ -70,7 +70,6 @@ def aa2_featurizer(data_path,directory):
         amino_idx = []
         amino_types = []
         for i, amino in enumerate(topologies[peptide].residues):
-
             for atom_name in amino.atoms:
                 amino_idx.append(i)
                 amino_types.append(amino_dict[amino.name])

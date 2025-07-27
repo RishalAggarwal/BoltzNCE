@@ -89,8 +89,8 @@ class Interpolant(torch.nn.Module):
             coords_sample = g.ndata['x0']
             coords_shape=g.ndata['x1'].shape
         if self.ot:
-            coords_prior=coords_prior.view(-1,self.dim)
-            coords_sample=coords_sample.view(-1,self.dim)
+            coords_prior=coords_prior.view(-1,coords_prior.shape[-1]*coords_prior.shape[-2])
+            coords_sample=coords_sample.view(-1,coords_sample.shape[-1]*coords_sample.shape[-2])
             row_ind, col_ind = self.OT_coupling(coords_sample,coords_prior)
             coords_prior=coords_prior[col_ind]
             coords_prior=coords_prior.view(coords_shape)

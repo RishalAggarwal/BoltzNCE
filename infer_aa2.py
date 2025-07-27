@@ -608,7 +608,7 @@ if __name__== "__main__":
         samples_np =samples_np.reshape(-1, n_atoms*n_dimensions)
         aligned_idxs = np.arange(len(samples_np))
         symmetry_change = np.zeros(len(samples_np), dtype=bool)
-        _, dataloader = get_aa2_single_dataloader(samples_np,h_initial,256,True,0,kabsch=False,batch_size=1024)
+        _, dataloader = get_aa2_single_dataloader(samples_np,h_initial,512,True,0,kabsch=False)
         threshold_weights=[0.02,0.05,0.2,0.5,1.0]
         for i in range(args['n_epochs']):
             print(f"########## Epoch {i+1}")

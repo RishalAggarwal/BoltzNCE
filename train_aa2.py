@@ -1,5 +1,7 @@
 import torch
 from BoltzNCE.dataset.aa2_dataloader import get_aa2_dataloader
+from BoltzNCE.infer_ad2 import gen_samples
+from BoltzNCE.dataset.alsys_dataloader import get_alaninesys_dataset
 from BoltzNCE.models.ebm import GVP_EBM, graphormer_EBM
 from BoltzNCE.models.vector_field import GVP_vector_field
 from BoltzNCE.models.interpolant import Interpolant
@@ -32,6 +34,7 @@ def parse_arguments():
     p.add_argument('--potential_type', type=str,required=False, default='gvp')
     p.add_argument('--optimizer_type', type=str,required=False, default='adam')
     p.add_argument('--ema', type=bool,required=False, default=False)
+    p.add_argument('--task', type=str,required=False, default='aa2')
 
     dataloader_group=p.add_argument_group('dataloader')
     dataloader_group.add_argument('--num_workers', type=int,required=False, default=8)
@@ -104,6 +107,12 @@ def parse_arguments():
     interpolant_group.add_argument('--interpolant_type', type=str,required=False, default='linear')
     interpolant_group.add_argument('--ot', type=bool,required=False, default=False)
     interpolant_group.add_argument('--integration_interpolant', type=str,required=False, default='linear')
+    interpolant_group.add_argument("--rtol", type=float, default=1e-4,
+                   help="relative tolerance for ODE/SDE solver")
+    interpolant_group.add_argument("--atol", type=float, default=1e-4,
+                   help="absolute tolerance for ODE/SDE solver")
+    interpolant_group.add_argument("--tmin",    type=float, default=0.0,
+                   help="endpoint of the integration time span")
 
     args=p.parse_args()
     return args,p
@@ -226,8 +235,12 @@ if __name__ == "__main__":
     if args['wandb']:
         wandb.init(project=args['wandb_project'], name=args['wandb_name'])
         wandb.config.update(args)
-
-    dataloader = get_aa2_dataloader(**args['dataloader'])
+    if args['task'] == 'aa2':
+        dataloader = get_alaninesys_dataset(**args['dataloader'])
+    elif args['task'] == 'alaninesys':
+        dataloader = get_alaninesys_dataset(**args['dataloader'])
+    else:
+        raise ValueError("Task must be either 'aa2' or 'alaninesys'")
     optimizer=torch.optim.Adam
     if args['optimizer_type']=='adam':
         optimizer=torch.optim.Adam
@@ -250,10 +263,15 @@ if __name__ == "__main__":
         interpolant_obj.vector_field=vector_field
 
     if args['model_type'] == 'potential':
-        potential_model = graphormer_EBM(**args['graphormer'], **args['potential_model']).cuda()
-        pytorch_total_params = sum(p.numel() for p in potential_model.parameters())
-        print(f"Total number of parameters in potential model: {pytorch_total_params}")
-        interpolant_obj.potential_function=potential_model
+        if args['task']=='alaninesys':
+            potential_model, vector_field, interpolant_obj = load_models(args,h_initial=dataloader.dataset.h_initial,potential=True)
+            samples_np,_=gen_samples(n_samples=200,n_sample_batches=500,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
+            dataloader = get_alaninesys_dataset(**args['dataloader'], coords=samples_np)
+        else:
+            potential_model = graphormer_EBM(**args['graphormer'], **args['potential_model']).cuda()
+            pytorch_total_params = sum(p.numel() for p in potential_model.parameters())
+            print(f"Total number of parameters in potential model: {pytorch_total_params}")
+            interpolant_obj.potential_function=potential_model
         optim_potential=optimizer(potential_model.parameters(), **args['optimizer'])
         scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])
         potential_model=train_potential(args, dataloader,interpolant_obj, potential_model, optim_potential, scheduler_potential,**args['training'],**args['train_potential'])

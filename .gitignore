@@ -27,4 +27,4 @@ generated/
 *.pyc
 wandb/
 data/*
-BoltzNCE/dataset/
+

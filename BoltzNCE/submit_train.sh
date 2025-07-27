@@ -5,6 +5,7 @@
 #SBATCH --partition koes_gpu
 #SBATCH --gres=gpu:1
 #SBATCH -c 12
+#SBATCH -w g022
 #SBATCH --constraint L40
 #SBATCH --mail-user=ria43@pitt.edu
 #SBATCH --mail-type=ALL
