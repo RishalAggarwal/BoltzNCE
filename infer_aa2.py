@@ -360,8 +360,8 @@ def process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_
     traj_samples=md.Trajectory(as_numpy(model_samples)[~symmetry_change], topology=topology)
     
     if args['compute_metrics'] == True:
-        compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix)
-    return model_samples,npz,aligned_idxs, symmetry_change, traj_samples
+        compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix)
+    return model_samples,data,aligned_idxs, symmetry_change, traj_samples
 
 def compute_free_energy_difference(phis, log_w_np, prefix=''):
     left = 0.
@@ -393,7 +393,7 @@ def calc_energy_w2(gen_energies, holdout_energies,prefix=''):
     # sort them
     # gen_energies_sorted = np.sort(gen_energies)
     # holdout_energies_sorted = np.sort(holdout_energies)
-    loss = ot.emd2_1d(gen_energies,holdout_energies,metric = "euclidean")
+    loss = ot.emd2_1d(gen_energies,holdout_energies,metric = "sqeuclidean")
 
     # # compute MSE of the sorted values = W2^2
     # w2_squared = np.mean((gen_energies_sorted - holdout_energies_sorted)**2)
@@ -475,9 +475,8 @@ def calculate_w2_distances(phis,psis,phis_data,psis_data,log_w_np,energies,energ
     wandb.log({prefix + "Angles W2 distance reweighted std": angles_w2_reweighted_std})
 
 
-def compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix='',threshold=0):  
+def compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix='',threshold=0):  
     plot_ramachandran(traj_samples, plot_name=prefix+'TBG')
-    data=remove_mean(npz['positions'][npz['step']%10000==0].reshape(-1, n_atoms*n_dimensions)[:190000], n_atoms, n_dimensions)*scaling
     traj_samples_data = md.Trajectory(data.reshape(-1, dim//3, 3)/scaling, topology=topology)
     plot_ramachandran(traj_samples_data, plot_name=prefix+'MD')
     pdb = openmm.app.PDBFile(pdb_path)
@@ -593,13 +592,13 @@ if __name__== "__main__":
     samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type)
     print(f"Generated {len(samples_np)} samples")
     if args['model_type']=='vector_field':
-        model_samples,npz,aligned_idxs, symmetry_change, traj_samples =process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args)
+        model_samples,data,aligned_idxs, symmetry_change, traj_samples =process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args)
     elif args['model_type']=='potential':
         print("########## training and computing potential logp")
         optim_potential = torch.optim.Adam(potential_model.parameters(), lr=1e-4)
         scheduler_potential = torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential, mode='min', factor=0.5, patience=20, verbose=True,min_lr=1e-5)
         dlogf_np = get_potential_logp(interpolant_obj, samples_np)
-        model_samples,npz,aligned_idxs, symmetry_change, traj_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args,prefix=f"potential_Epoch_0_")
+        model_samples,data,aligned_idxs, symmetry_change, traj_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, peptide, args,prefix=f"potential_Epoch_0_")
         model_samples = model_samples[~symmetry_change]
         samples_np =(model_samples.reshape(-1, dim)).cpu().detach().numpy()
         samples_np = samples_np * scaling
@@ -620,11 +619,11 @@ if __name__== "__main__":
                 optim_potential.param_groups[0]['lr'] = 1e-4
             if i % 10 == 0:
                 dlogf_np = get_potential_logp(interpolant_obj, samples_np)
-                compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_")
+                compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_")
                 for threshold in threshold_weights:
-                    compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_threshold_{threshold}", threshold=threshold)
+                    compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_threshold_{threshold}", threshold=threshold)
         for threshold in threshold_weights:
-            compute_metrics(npz, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold_{threshold}", threshold=threshold)
+            compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold_{threshold}", threshold=threshold)
     else:
         raise ValueError("model_type not recognized, should be either vector_field or potential")   
     if args['save_generated']:

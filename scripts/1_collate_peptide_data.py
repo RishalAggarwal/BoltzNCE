@@ -38,6 +38,6 @@ def collate_npy_files(input_dir, output_path):
 
 
 if __name__ == "__main__":
-    input_directory = "../generated/train"  # change this if your directory is different
-    output_file = "../data/all_gen_biased.npy"
+    input_directory = "../generated/correctedbias"  # change this if your directory is different
+    output_file = "../data/2AA-1-large/all_gen_correctedbias.npy"
     collate_npy_files(input_directory, output_file)

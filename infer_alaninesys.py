@@ -40,8 +40,8 @@ def parse_arguments():
                    help="absolute tolerance for ODE/SDE solver")
     p.add_argument("--tmin",    type=float, default=0.0,
                    help="endpoint of the integration time span")
-    p.add_argument('--data_path',type=str,default="data/",required=False)
-    p.add_argument('--split',type=str,default="AAAA",required=False)
+    #p.add_argument('--data_path',type=str,default="data/",required=False)
+    #p.add_argument('--split',type=str,default="AAAA",required=False)
     args=p.parse_args()
 
     return args,p
@@ -62,42 +62,44 @@ def plot_energy_histograms(classical_target_energies, classical_model_energies, 
     plt.close()
 
 def process_gen_samples(samples_np,dlogf_np,scaling,topology,adj_list,atom_types, args, prefix=''):
-    traj_samples=md.Trajectory(samples_np.reshape(-1, dim//3, 3)/scaling, topology=topology)
-    aligned_samples, aligned_idxs = align_samples(samples_np, adj_list, dim, atom_types, scaling)
-    traj_samples_aligned = md.Trajectory(aligned_samples/scaling, topology=topology)
+    traj_samples_aligned=md.Trajectory(samples_np.reshape(-1, dim//3, 3), topology=topology)
+    #aligned_samples, aligned_idxs = align_samples(samples_np, adj_list, dim, atom_types, scaling)
+    #traj_samples_aligned = md.Trajectory(samples_np, topology=topology)
     model_samples = torch.from_numpy(traj_samples_aligned.xyz)
-
-    u=MDAnalysis.Universe(args['data_path'] +'/'+args['split']+'.prmtop', [args['data_path'] + '/' + args['split'].lower()+'_19.nc'])  
+    data_path = args['data_path']  + args['split']
+    u=MDAnalysis.Universe(data_path+'/'+args['split']+'.prmtop', [data_path + '/' + args['split'].lower()+'_19.nc'])  
     coords =[]
     for ts in u.trajectory:
         coords.append(u.select_atoms('all').positions)
     coords = np.array(coords)
+    coords = torch.from_numpy(coords)
     #mean center the coordinates
     coords = coords - coords.mean(dim=1, keepdim=True)
+    coords = coords.numpy()
     data=coords
     model_samples,symmetry_change=fix_chirality(model_samples, adj_list, atom_types, data, dim)
     traj_samples=md.Trajectory(as_numpy(model_samples)[~symmetry_change], topology=topology)
-    return model_samples,data,aligned_idxs,symmetry_change,traj_samples
+    return model_samples,data,symmetry_change,traj_samples
 
 def plot_ramachandrans(traj_samples,plot_name=''):
     phis= md.compute_phi(traj_samples)
     psis= md.compute_psi(traj_samples)
-    for i in range(len(phis)):
+    for i in range(phis[1].shape[1]):
         fig, ax = plt.subplots(figsize=(9, 9))
         plot_range = [-np.pi, np.pi]
-        h, x_bins, y_bins, im = ax.hist2d(phis[i], psis[i], 100, norm=LogNorm(), range=[plot_range,plot_range],rasterized=True)
+        h, x_bins, y_bins, im = ax.hist2d(phis[1][:,i], psis[1][:,i], 100, norm=LogNorm(), range=[plot_range,plot_range],rasterized=True)
         ax.set_xlabel(r"$\varphi$", fontsize=45)
         ax.set_ylabel(r"$\psi$", fontsize=45)
         ax.set_title(plot_name, fontsize=45)
         ax.xaxis.set_tick_params(labelsize=25)
         ax.yaxis.set_tick_params(labelsize=25)
         ax.set_yticks([])
-        wandb.log({plot_name + r"$\varphi$ "+ str(i+1) +" Ramachandran plot": wandb.Image(plt)})
+        wandb.log({plot_name + r"$\varphi$"+ str(i+1) +" Ramachandran plot": wandb.Image(plt)})
         plt.close(fig)
 
-def compute_metrics(data,dlogf_np,scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix='',threshold=0):
+def compute_metrics(data,dlogf_np, topology, model_samples, n_atoms, n_dimensions,  symmetry_change, traj_samples,prefix='',threshold=0):
     plot_ramachandrans(traj_samples, plot_name=prefix+'Emulator')
-    traj_samples_data = md.Trajectory(data.reshape(-1, n_atoms, n_dimensions), topology=topology)
+    traj_samples_data = md.Trajectory(data.reshape(-1, n_atoms, 3), topology=topology)
     plot_ramachandrans(traj_samples_data, plot_name=prefix+'MD')
     forcefield = openmm.app.ForceField('amber14/protein.ff15ipq.xml', 'implicit/gbn2.xml')
     system = forcefield.createSystem(
@@ -113,7 +115,7 @@ def compute_metrics(data,dlogf_np,scaling, topology, model_samples, n_atoms, n_d
     openmm_energy = OpenMMEnergy(bridge=OpenMMBridge(system, integrator, platform_name="CUDA"))
     classical_model_energies = as_numpy(openmm_energy.energy(model_samples.reshape(-1, dim)[~symmetry_change]))
     classical_target_energies = as_numpy(openmm_energy.energy(torch.from_numpy(data).reshape(-1, dim)))
-    idxs = np.array(aligned_idxs)[~symmetry_change]
+    idxs = np.arange(len(classical_model_energies))[~symmetry_change]
     log_w_np = -classical_model_energies - as_numpy(dlogf_np.reshape(-1,1)[idxs])
     log_w_torch=torch.tensor(log_w_np)
     log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
@@ -128,14 +130,14 @@ def compute_metrics(data,dlogf_np,scaling, topology, model_samples, n_atoms, n_d
         log_w_np=log_w_np[:threshold_index]
     wandb.log({prefix + "Sampling efficiency Mean": sampling_efficiency(torch.from_numpy(log_w_np)).item()})
     plot_energy_histograms(classical_target_energies, classical_model_energies, log_w_np, prefix=prefix)
-    phis_data= md.compute_phi(traj_samples_data)
-    phis= md.compute_phi(traj_samples)
-    for i in range(len(phis)):
-        compute_free_energy_difference(phis[i], log_w_np, prefix=prefix+'phi '+str(i+1))
-        compute_free_energy_difference(phis_data[i], log_w_np, prefix='MD phi '+str(i+1))
-        grid_left_data, fes_left_data, grid_right_data, fes_right_data = phi_to_grid(phis_data[i].flatten())
-        grid_left, fes_left, grid_right, fes_right = phi_to_grid(phis[i].flatten())
-        grid_left_weighted, fes_left_weighted, grid_right_weighted, fes_right_weighted = phi_to_grid(phis[i].flatten(), weights=np.exp(log_w_np))
+    phis_data= md.compute_phi(traj_samples_data)[1]
+    phis= md.compute_phi(traj_samples)[1]
+    for i in range(phis.shape[1]):
+        compute_free_energy_difference(phis[:,i], log_w_np, prefix=prefix+'phi '+str(i+1))
+        compute_free_energy_difference(phis_data[:,i], log_w_np, prefix='MD phi '+str(i+1))
+        grid_left_data, fes_left_data, grid_right_data, fes_right_data = phi_to_grid(phis_data[:,i].flatten())
+        grid_left, fes_left, grid_right, fes_right = phi_to_grid(phis[:,i].flatten())
+        grid_left_weighted, fes_left_weighted, grid_right_weighted, fes_right_weighted = phi_to_grid(phis[:,i].flatten(), weights=np.exp(log_w_np))
         plt.figure(figsize=(16,9))
         plt.plot(np.hstack([grid_left_data, grid_right_data]), np.hstack([fes_left_data, fes_right_data]), linewidth=5, label="MD")
         plt.plot(np.hstack([grid_left, grid_right]), np.hstack([fes_left, fes_right]), linewidth=5, linestyle="--", label="Emulator")
@@ -155,7 +157,8 @@ if __name__ == "__main__":
     wandb.init(project=args['wandb_project'], name=args['wandb_inference_name'])
     wandb.config.update(args)
     scaling=30.0
-
+    args['data_path']=args['dataloader']['data_path']
+    args['split']=args['dataloader']['split']
 
     topology,h_initial=alaninesys_featurizer(args['data_path'], split=args['split'])
     adj_list = torch.from_numpy(np.array([(b.atom1.index, b.atom2.index) for b in topology.bonds], dtype=np.int32))
@@ -183,4 +186,5 @@ if __name__ == "__main__":
     if potential_model is not None:
         dlogf_np= get_potential_logp(samples_np, interpolant_obj)
 
-    model_samples,data,aligned_idxs,symmetry_change,traj_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, args)
+    model_samples,data,symmetry_change,traj_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, args)
+    compute_metrics(data,dlogf_np, topology, model_samples, n_particles, dim, symmetry_change, traj_samples,prefix='',threshold=0)

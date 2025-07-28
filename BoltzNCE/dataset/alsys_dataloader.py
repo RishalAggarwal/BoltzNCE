@@ -9,6 +9,7 @@ import numpy as np
 class AlaninesysGraphDataset(dgl.data.DGLDataset):
     def __init__(self, data_path, split='AAAAAA',coords=None):
         super(AlaninesysGraphDataset, self).__init__(name='alaninesys_graph_dataset')
+        self.topology, self.h_initial = alaninesys_featurizer(data_path, split)
         data_path = data_path + split
         u=MDAnalysis.Universe(data_path +'/'+split+'.prmtop', [data_path + '/' + split.lower()+'_1.nc'])  
         if coords is not None:
@@ -22,7 +23,7 @@ class AlaninesysGraphDataset(dgl.data.DGLDataset):
             self.coords = torch.from_numpy(coords[:30000])
         #mean center the coordinates
         self.coords = self.coords - self.coords.mean(dim=1, keepdim=True)
-        self.topology, self.h_initial = alaninesys_featurizer(data_path, split)
+        
         self.n_particles = self.h_initial.shape[0]
         self.nodes=torch.arange(self.h_initial.shape[0])
         self.edges=torch.cartesian_prod(self.nodes,self.nodes)
@@ -44,6 +45,7 @@ def get_alaninesys_dataset(data_path=None,batch_size=512,shuffle=True,num_worker
     return dataloader
 
 def alaninesys_featurizer(data_path, split='AAAAAA'):
+    data_path = data_path + split
     u=MDAnalysis.Universe(data_path +'/'+split+'.prmtop', [data_path + '/' + split.lower()+'_1.nc']) 
     topology = md.load_prmtop(data_path + '/' + split+'.prmtop')
     atom_types = []

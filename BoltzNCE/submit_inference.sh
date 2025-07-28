@@ -34,4 +34,4 @@ source activate boltznce
 module load cuda/12.1
 #python ./train_pharmnn.py --train_data data/chemsplit_train0.pkl --test_data data/chemsplit_test0.pkl  --wandb_name default_chemsplit0_large_256 --grid_dimension 15.5  --expand_width 0 --model models/default_chemsplit0_large_256_last_model.pkl --lr 0.00001
 #python ./train_pharmnn.py --train_data data/chemsplit_train2_with_ligand.pkl --test_data data/chemsplit_test2_with_ligand.pkl  --wandb_name obabel_chemsplit2_2 --negative_data data/obabel_chemsplit_2_negatives_train.txt --batch_size 256 --model models/obabel_chemsplit2_last_model.pkl --lr 0.00001
-python infer_ad2.py --config ../configs/infer_potential_graphormer_1b8ld256.yaml --n_sample_batches 200 --wandb_inference_name potential_trig_graphormer_ramachandran --weight_threshold 0 --MCMC --MCMC_steps 500
+python infer_ad2.py --config ../configs/infer_potential_graphormer_1b8ld256.yaml --n_sample_batches 200 --wandb_inference_name potential_trig_graphormer_ot_vector_100k_inference_wt0 --weight_threshold 0.0 --save_generated --save_prefix ./generated/ebm_ot_vector_MCMC0_0

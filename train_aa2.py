@@ -1,6 +1,5 @@
 import torch
 from BoltzNCE.dataset.aa2_dataloader import get_aa2_dataloader
-from BoltzNCE.infer_ad2 import gen_samples
 from BoltzNCE.dataset.alsys_dataloader import get_alaninesys_dataset
 from BoltzNCE.models.ebm import GVP_EBM, graphormer_EBM
 from BoltzNCE.models.vector_field import GVP_vector_field
@@ -11,6 +10,9 @@ import tqdm
 import dgl
 import copy
 import yaml
+import time
+import numpy as np
+from bgflow.utils import distances_from_vectors, distance_vectors
 import argparse
 import wandb
 from BoltzNCE.utils.utils import load_models
@@ -116,6 +118,58 @@ def parse_arguments():
 
     args=p.parse_args()
     return args,p
+
+def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral_type='ode',ess_threshold=0.75,n_timesteps=1000):
+    
+    time_start = time.time()
+    
+    latent_np = np.empty(shape=(0))
+    samples_np = np.empty(shape=(0))
+    log_w_np = np.empty(shape=(0))
+    dlogp_all=[]
+    #dlogf_all=[]
+    #energies_np = np.empty(shape=(0))
+    distances_x_np = np.empty(shape=(0))
+    interpolant_placeholder=interpolant_obj.interpolant_type
+    interpolant_obj.interpolant_type= interpolant_obj.integration_interpolant
+
+    if integral_type=='Jarzynski':
+        samples= interpolant_obj.Jarzynski_integral(n_samples*n_sample_batches,n_timesteps=n_timesteps,ess_threshold=ess_threshold)
+        samples_np=samples.detach().cpu().numpy()
+    else:
+        for i in tqdm.tqdm(range(n_sample_batches)):
+            with torch.no_grad():
+                if integral_type=='sde':
+                    samples= interpolant_obj.sde_integral(n_samples,n_timesteps=n_timesteps)
+                elif integral_type=='ode':
+                    samples=interpolant_obj.ode_integral(n_samples)
+                elif integral_type=='PC':
+                    samples=interpolant_obj.PC_integral(n_samples)
+                elif integral_type=='ode_divergence':
+                    samples,logp_samples=interpolant_obj.ode_divergence_integral(n_samples)
+                    dlogp_all.append(logp_samples.cpu().detach().numpy())
+
+                else:
+                    raise ValueError("integral_type not recognized")
+                
+                #dlogf=interpolant_obj.log_prob_forward(samples)
+                #latent = latent[0]
+                #log_weights = bg.log_weights_given_latent(samples, latent, dlogp).detach().cpu().numpy()
+                samples_np = np.append(samples_np, samples.detach().cpu().numpy())
+        
+                #log_w_np = np.append(log_w_np, log_weights)
+                #dlogf_all.append(dlogf.cpu().detach())
+                #energies = target.energy(samples/scaling).detach().cpu().numpy()
+                #energies_np = np.append(energies_np, energies)
+    if len(dlogp_all)>0:
+        dlogp_all = np.concatenate(dlogp_all, axis=0)
+    samples_np = samples_np.reshape(-1, interpolant_obj.dim)
+    samples_np = samples_np * interpolant_obj.scaling
+    time_end = time.time()
+    print("Sampling took {} seconds".format(time_end - time_start))
+    wandb.log({"Sampling time": time_end - time_start})
+    interpolant_obj.interpolant_type=interpolant_placeholder
+    return samples_np,dlogp_all
 
 
 def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint,self_conditioning,tweight_max):
@@ -236,7 +290,7 @@ if __name__ == "__main__":
         wandb.init(project=args['wandb_project'], name=args['wandb_name'])
         wandb.config.update(args)
     if args['task'] == 'aa2':
-        dataloader = get_alaninesys_dataset(**args['dataloader'])
+        dataloader = get_aa2_dataloader(**args['dataloader'])
     elif args['task'] == 'alaninesys':
         dataloader = get_alaninesys_dataset(**args['dataloader'])
     else:
@@ -265,6 +319,8 @@ if __name__ == "__main__":
     if args['model_type'] == 'potential':
         if args['task']=='alaninesys':
             potential_model, vector_field, interpolant_obj = load_models(args,h_initial=dataloader.dataset.h_initial,potential=True)
+            interpolant_obj.dim = dataloader.dataset.h_initial.shape[0] * 3
+            interpolant_obj.n_particles = dataloader.dataset.h_initial.shape[0]
             samples_np,_=gen_samples(n_samples=200,n_sample_batches=500,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
             dataloader = get_alaninesys_dataset(**args['dataloader'], coords=samples_np)
         else:
