@@ -374,6 +374,7 @@ def compute_free_energy_difference(phis, log_w_np, prefix=''):
     free_energy_difference = -np.log(hist[centers_pos].sum()/
     hist[~centers_pos].sum())
     wandb.log({prefix + " Free energy difference": free_energy_difference})
+    return free_energy_difference
 
 def calc_energy_w2(gen_energies, holdout_energies,prefix=''):
     """Calcualate and log energy and torsion w2 distance 
@@ -507,8 +508,10 @@ def compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n
     psis_data = md.compute_psi(traj_samples_data)[1].flatten()
     phis = md.compute_phi(traj_samples)[1].flatten()
     psis = md.compute_psi(traj_samples)[1].flatten()
-    compute_free_energy_difference(phis, log_w_np, prefix=prefix)
-    compute_free_energy_difference(phis_data, np.zeros((phis_data.shape[0],1)), prefix="MD")
+    fed_model=compute_free_energy_difference(phis, log_w_np, prefix=prefix)
+    fed_data=compute_free_energy_difference(phis_data, np.zeros((phis_data.shape[0],1)), prefix="MD")
+    estimation_error = np.abs(fed_model - fed_data)
+    wandb.log({prefix + "FED estimation error": estimation_error})
     #plot free energy projection along phi
     grid_left_data, fes_left_data, grid_right_data, fes_right_data = phi_to_grid(md.compute_phi(traj_samples_data)[1].flatten())
     grid_left, fes_left, grid_right, fes_right = phi_to_grid(md.compute_phi(traj_samples)[1].flatten())
@@ -554,6 +557,7 @@ def compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n
     plt.yticks(fontsize=25)
     wandb.log({prefix + "Free energy projection TICA0": wandb.Image(plt)})
     plt.close()
+    return model_samples,dlogf_np,classical_model_energies,log_w_np
 
 if __name__== "__main__":
     args,p=parse_arguments()
@@ -622,8 +626,17 @@ if __name__== "__main__":
                 compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_")
                 for threshold in threshold_weights:
                     compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_threshold_{threshold}", threshold=threshold)
+
+        model_samples,dlogf_np,classical_model_energies,log_w_np = compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold", threshold=0)
+        if args['save_generated']:
+            numpy_dict={
+                'samples': samples_np,
+                'dlogf': dlogf_np,
+                'log_w': log_w_np,
+                'energies': classical_model_energies}
+            np.savez(args['save_prefix'] + args['peptide'] + '_potential_samples_dict.npz', **numpy_dict)
         for threshold in threshold_weights:
-            compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold_{threshold}", threshold=threshold)
+            model_samples,dlogf_np,classical_model_energies,log_w_np = compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold_{threshold}", threshold=threshold)
     else:
         raise ValueError("model_type not recognized, should be either vector_field or potential")   
     if args['save_generated']:

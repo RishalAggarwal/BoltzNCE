@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import MDAnalysis 
+import parmed
 import mdtraj as md
 import argparse
 import wandb
@@ -40,6 +41,7 @@ def parse_arguments():
                    help="absolute tolerance for ODE/SDE solver")
     p.add_argument("--tmin",    type=float, default=0.0,
                    help="endpoint of the integration time span")
+    p.add_argument('--integration_method', type=str, default='dopri5')
     #p.add_argument('--data_path',type=str,default="data/",required=False)
     #p.add_argument('--split',type=str,default="AAAA",required=False)
     args=p.parse_args()
@@ -97,25 +99,19 @@ def plot_ramachandrans(traj_samples,plot_name=''):
         wandb.log({plot_name + r"$\varphi$"+ str(i+1) +" Ramachandran plot": wandb.Image(plt)})
         plt.close(fig)
 
-def compute_metrics(data,dlogf_np, topology, model_samples, n_atoms, n_dimensions,  symmetry_change, traj_samples,prefix='',threshold=0):
+def compute_metrics(data,dlogf_np, topology, model_samples, n_atoms, n_dimensions,  symmetry_change, traj_samples,args,prefix='',threshold=0):
     plot_ramachandrans(traj_samples, plot_name=prefix+'Emulator')
     traj_samples_data = md.Trajectory(data.reshape(-1, n_atoms, 3), topology=topology)
     plot_ramachandrans(traj_samples_data, plot_name=prefix+'MD')
+    data_path = args['data_path'] + args['split']
+    prmtop = openmm.app.AmberPrmtopFile(data_path + '/' + args['split']+'.prmtop')
     forcefield = openmm.app.ForceField('amber14/protein.ff15ipq.xml', 'implicit/gbn2.xml')
-    system = forcefield.createSystem(
-    topology,
-    nonbondedMethod=openmm.app.CutoffNonPeriodic,  # ntb=0
-    constraints=openmm.app.HBonds,
-    implicitSolvent=openmm.app.GBn2,               # igb=8
-    gbsaModel=openmm.app.HCT,                      # gbsa=3 corresponds to HCT in OpenMM (pairwise SA)
-    surfaceAreaPenalty=0.007*kilocalorie_per_mole/angstroms**2,  # surften
-    implicitSolventSaltConc=0.0*mole  # saltcon = 0.0
-    )
-    integrator = openmm.LangevinMiddleIntegrator(310*openmm.unit.kelvin, 0.3/openmm.unit.picosecond, 0.5*openmm.unit.femtosecond)
+    system = forcefield.createSystem(prmtop.topology, nonbondedMethod=openmm.app.NoCutoff, constraints=openmm.app.HBonds)
+    integrator = openmm.LangevinMiddleIntegrator(300*openmm.unit.kelvin, 1/openmm.unit.picosecond, 2*openmm.unit.femtosecond)
     openmm_energy = OpenMMEnergy(bridge=OpenMMBridge(system, integrator, platform_name="CUDA"))
-    classical_model_energies = as_numpy(openmm_energy.energy(model_samples.reshape(-1, dim)[~symmetry_change]))
-    classical_target_energies = as_numpy(openmm_energy.energy(torch.from_numpy(data).reshape(-1, dim)))
-    idxs = np.arange(len(classical_model_energies))[~symmetry_change]
+    classical_model_energies = as_numpy(openmm_energy.energy(model_samples.reshape(-1, dim)[~symmetry_change]/10))
+    classical_target_energies = as_numpy(openmm_energy.energy(torch.from_numpy(data).reshape(-1, dim)/10))
+    idxs = np.arange(len(model_samples))[~symmetry_change]
     log_w_np = -classical_model_energies - as_numpy(dlogf_np.reshape(-1,1)[idxs])
     log_w_torch=torch.tensor(log_w_np)
     log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
@@ -134,7 +130,7 @@ def compute_metrics(data,dlogf_np, topology, model_samples, n_atoms, n_dimension
     phis= md.compute_phi(traj_samples)[1]
     for i in range(phis.shape[1]):
         compute_free_energy_difference(phis[:,i], log_w_np, prefix=prefix+'phi '+str(i+1))
-        compute_free_energy_difference(phis_data[:,i], log_w_np, prefix='MD phi '+str(i+1))
+        compute_free_energy_difference(phis_data[:,i], np.zeros((phis_data[:,i].shape[0],1)), prefix='MD phi '+str(i+1))
         grid_left_data, fes_left_data, grid_right_data, fes_right_data = phi_to_grid(phis_data[:,i].flatten())
         grid_left, fes_left, grid_right, fes_right = phi_to_grid(phis[:,i].flatten())
         grid_left_weighted, fes_left_weighted, grid_right_weighted, fes_right_weighted = phi_to_grid(phis[:,i].flatten(), weights=np.exp(log_w_np))
@@ -174,6 +170,7 @@ if __name__ == "__main__":
     update_interpolant_args(args)
     
     potential_model, vector_field, interpolant_obj = load_models(args,h_initial=h_initial,potential=args['model_type']=='potential')
+    interpolant_obj.integration_method=args['integration_method']
     if potential_model is not None:
         potential_model.eval()
     vector_field.eval()
@@ -187,4 +184,11 @@ if __name__ == "__main__":
         dlogf_np= get_potential_logp(samples_np, interpolant_obj)
 
     model_samples,data,symmetry_change,traj_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, args)
-    compute_metrics(data,dlogf_np, topology, model_samples, n_particles, dim, symmetry_change, traj_samples,prefix='',threshold=0)
+    compute_metrics(data,dlogf_np, topology, model_samples, n_particles, dim, symmetry_change, traj_samples,args,prefix='',threshold=0)
+
+    if args['save_generated']:
+        numpy_dict={
+            'samples': as_numpy(model_samples),
+            'dlogf': dlogf_np,
+        }
+        np.savez(args['save_prefix'] + '_numpy_dict.npz', **numpy_dict)

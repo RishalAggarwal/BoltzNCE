@@ -13,7 +13,8 @@ class AlaninesysGraphDataset(dgl.data.DGLDataset):
         data_path = data_path + split
         u=MDAnalysis.Universe(data_path +'/'+split+'.prmtop', [data_path + '/' + split.lower()+'_1.nc'])  
         if coords is not None:
-            self.coords = coords
+            self.coords = np.load(data_path + '/' + coords)
+            self.coords = torch.from_numpy(self.coords)
         else:   
             coords =[]
             for ts in u.trajectory:

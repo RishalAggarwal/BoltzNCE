@@ -292,7 +292,10 @@ if __name__ == "__main__":
     if args['task'] == 'aa2':
         dataloader = get_aa2_dataloader(**args['dataloader'])
     elif args['task'] == 'alaninesys':
-        dataloader = get_alaninesys_dataset(**args['dataloader'])
+        if args['model_type'] == 'vector_field':
+            dataloader = get_alaninesys_dataset(**args['dataloader'])
+        elif args['model_type'] == 'potential':
+            dataloader = get_alaninesys_dataset(**args['dataloader'], coords='train_gen_coords.npy')
     else:
         raise ValueError("Task must be either 'aa2' or 'alaninesys'")
     optimizer=torch.optim.Adam
@@ -317,17 +320,10 @@ if __name__ == "__main__":
         interpolant_obj.vector_field=vector_field
 
     if args['model_type'] == 'potential':
-        if args['task']=='alaninesys':
-            potential_model, vector_field, interpolant_obj = load_models(args,h_initial=dataloader.dataset.h_initial,potential=True)
-            interpolant_obj.dim = dataloader.dataset.h_initial.shape[0] * 3
-            interpolant_obj.n_particles = dataloader.dataset.h_initial.shape[0]
-            samples_np,_=gen_samples(n_samples=200,n_sample_batches=500,interpolant_obj=interpolant_obj,integral_type='ode',n_timesteps=1000)
-            dataloader = get_alaninesys_dataset(**args['dataloader'], coords=samples_np)
-        else:
-            potential_model = graphormer_EBM(**args['graphormer'], **args['potential_model']).cuda()
-            pytorch_total_params = sum(p.numel() for p in potential_model.parameters())
-            print(f"Total number of parameters in potential model: {pytorch_total_params}")
-            interpolant_obj.potential_function=potential_model
+        potential_model = graphormer_EBM(**args['graphormer'], **args['potential_model']).cuda()
+        pytorch_total_params = sum(p.numel() for p in potential_model.parameters())
+        print(f"Total number of parameters in potential model: {pytorch_total_params}")
+        interpolant_obj.potential_function=potential_model
         optim_potential=optimizer(potential_model.parameters(), **args['optimizer'])
         scheduler_potential=torch.optim.lr_scheduler.ReduceLROnPlateau(optim_potential,**args['scheduler'])
         potential_model=train_potential(args, dataloader,interpolant_obj, potential_model, optim_potential, scheduler_potential,**args['training'],**args['train_potential'])
