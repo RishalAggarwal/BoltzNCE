@@ -76,8 +76,8 @@ class aa2_single_dataset(dgl.data.DGLDataset):
         self.graphs[idx].ndata["x0"] = x_true
         self.graphs[idx].ndata["h"] = self.h_initial
         return self.graphs[idx]
-    
-def get_aa2_single_dataloader(dataset, h_initial, batch_size=512, shuffle=True, num_workers=8, kabsch=False):
+
+def get_aa2_single_dataloader(dataset, h_initial, batch_size=512, shuffle=True, num_workers=8, kabsch=False, **kwargs):
     dataset = aa2_single_dataset(dataset, h_initial, kabsch=kabsch)
     dataloader = dgl.dataloading.GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataset, dataloader

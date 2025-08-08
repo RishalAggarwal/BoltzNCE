@@ -50,6 +50,7 @@ def parse_arguments():
     training_group=p.add_argument_group('training')
     training_group.add_argument('--num_epochs', type=int,required=False, default=12)
     training_group.add_argument('--grad_norm', type=float,required=False, default=None)
+    training_group.add_argument('--scheduler_checkpoint', type=int,required=False, default=300)
 
     train_potential_group=p.add_argument_group('train_potential')
     train_potential_group.add_argument('--window_size', type=float,required=False, default=0.025)
@@ -172,7 +173,7 @@ def gen_samples(n_samples,n_sample_batches,interpolant_obj: Interpolant,integral
     return samples_np,dlogp_all
 
 
-def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint,self_conditioning,tweight_max):
+def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_model , optim_vector, scheduler_vector,num_epochs,grad_norm,endpoint,self_conditioning,tweight_max,scheduler_checkpoint):
     if args['ema']:
         ema = EMA(vector_model, allow_different_devices = True,**args['ema_model'])
     losses=[]
@@ -213,7 +214,7 @@ def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_mode
             if args['ema']:
                 ema.update()
             losses.append(loss_vector.item())
-            if it % 300 == 0:
+            if it % scheduler_checkpoint == 0:
                 scheduler_vector.step(sum(losses)/len(losses))
                 losses=[]
         print(f"Epoch {epoch}: Vector Field Loss: {sum(losses)/len(losses)}")
@@ -222,7 +223,7 @@ def train_vector_field(args,dataloader,interpolant_obj: Interpolant, vector_mode
         vector_model=ema.ema_model
     return vector_model
 
-def train_potential(args, dataloader, interpolant_obj: Interpolant, potential_model, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float,grad_norm: float):
+def train_potential(args, dataloader, interpolant_obj: Interpolant, potential_model, optim_potential:torch.optim.Optimizer, scheduler_potential: torch.optim.lr_scheduler.ReduceLROnPlateau,num_epochs: int,window_size,num_negatives: int,nce_weight: float,grad_norm: float,scheduler_checkpoint: int):
     #hardcoding arguments for now
     print('interpolant_type', interpolant_obj.interpolant_type)
     if args['ema']:
@@ -271,7 +272,7 @@ def train_potential(args, dataloader, interpolant_obj: Interpolant, potential_mo
             losses.append(loss.item())
             losses_score.append(loss_score.item())
             losses_nce.append(loss_nce.item())
-            if it % 300 == 0:
+            if it % scheduler_checkpoint == 0:
                 scheduler_potential.step(sum(losses)/len(losses))
                 losses=[]
         print(f"Epoch {epoch}: Potential Score Loss: {sum(losses_score)/len(losses_score)}")

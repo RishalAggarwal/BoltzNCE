@@ -247,6 +247,10 @@ def plot_fes(
         weights = weights[:,0]
         samples=samples[weights!=0]
         weights=weights[weights!=0]
+        samples=samples[~np.isnan(weights)]
+        weights=weights[~np.isnan(weights)]
+        samples=samples[~np.isinf(weights)]
+        weights=weights[~np.isinf(weights)]
     fes = -kBT * gaussian_kde(samples, bw_method, weights).logpdf(grid)
     fes -= fes.min()
 
@@ -491,9 +495,6 @@ def compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n
     classical_target_energies = as_numpy(openmm_energy.energy(torch.from_numpy(data)[::10].reshape(-1, dim)/scaling))
     idxs = np.array(aligned_idxs)[~symmetry_change]
     log_w_np = -classical_model_energies - as_numpy(dlogf_np.reshape(-1,1)[idxs])
-    log_w_torch=torch.tensor(log_w_np)
-    log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
-    log_w_np=log_w_torch.numpy()
     if threshold>0:
         threshold_index=len(classical_model_energies) - int(threshold*len(classical_model_energies)/100)
         classical_model_energies=classical_model_energies[np.argsort(log_w_np,axis=0)[:,0],:]
@@ -502,6 +503,9 @@ def compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n
         traj_samples=md.Trajectory(as_numpy(model_samples[~symmetry_change])[:threshold_index,:], topology=topology)
         log_w_np=np.sort(log_w_np,axis=0)
         log_w_np=log_w_np[:threshold_index]  
+    log_w_torch=torch.tensor(log_w_np)
+    log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
+    log_w_np=log_w_torch.numpy()
     wandb.log({prefix + "Sampling efficiency Mean": sampling_efficiency(torch.from_numpy(log_w_np)).item()})
     plot_energy_histograms(classical_target_energies, classical_model_energies, log_w_np, prefix=prefix)
     phis_data = md.compute_phi(traj_samples_data)[1].flatten()
@@ -616,27 +620,35 @@ if __name__== "__main__":
         for i in range(args['n_epochs']):
             print(f"########## Epoch {i+1}")
             potential_model.train()
-            potential_model=train_potential(args, dataloader, interpolant_obj, potential_model, optim_potential, scheduler_potential, num_epochs=1, window_size=0.0125, num_negatives=1, nce_weight=1.0,grad_norm=None)
+            potential_model=train_potential(args, dataloader, interpolant_obj, potential_model, optim_potential, scheduler_potential, num_epochs=1, window_size=0.0125, num_negatives=1, nce_weight=1.0,grad_norm=None,scheduler_checkpoint=300)
             potential_model.eval()
             interpolant_obj.potential_function = potential_model
             if i==5:
                 optim_potential.param_groups[0]['lr'] = 1e-4
             if i % 10 == 0:
                 dlogf_np = get_potential_logp(interpolant_obj, samples_np)
-                compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_")
+                model_samples,dlogf_np,classical_model_energies,log_w_np =compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_")
                 for threshold in threshold_weights:
-                    compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_threshold_{threshold}", threshold=threshold)
+                    model_samples_save,dlogf_np_save,classical_model_energies_save,log_w_np_save =compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_{i+1}_threshold_{threshold}", threshold=threshold)
+                    if args['save_generated']:
+                        numpy_dict={
+                            'samples': model_samples_save,
+                            'dlogf': dlogf_np_save,
+                            'log_w': log_w_np_save,
+                            'energies': classical_model_energies_save}
+                        np.savez(args['save_prefix'] + args['peptide'] + f'_potential_samples_dict_epoch_{i+1}_threshold_{threshold}.npz', **numpy_dict)
 
-        model_samples,dlogf_np,classical_model_energies,log_w_np = compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold", threshold=0)
+        dlogf_np = get_potential_logp(interpolant_obj, samples_np)
+        model_samples_save,dlogf_np_save,classical_model_energies_save,log_w_np_save = compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold", threshold=0)
         if args['save_generated']:
             numpy_dict={
-                'samples': samples_np,
-                'dlogf': dlogf_np,
-                'log_w': log_w_np,
-                'energies': classical_model_energies}
+                'samples': model_samples_save,
+                'dlogf': dlogf_np_save,
+                'log_w': log_w_np_save,
+                'energies': classical_model_energies_save}
             np.savez(args['save_prefix'] + args['peptide'] + '_potential_samples_dict.npz', **numpy_dict)
         for threshold in threshold_weights:
-            model_samples,dlogf_np,classical_model_energies,log_w_np = compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold_{threshold}", threshold=threshold)
+            model_samples_save,dlogf_np_save,classical_model_energies_save,log_w_np_save = compute_metrics(data, dlogf_np, scaling, topology, model_samples, n_atoms, n_dimensions, aligned_idxs, symmetry_change, pdb_path, traj_samples,prefix=f"potential_Epoch_101_threshold_{threshold}", threshold=threshold)
     else:
         raise ValueError("model_type not recognized, should be either vector_field or potential")   
     if args['save_generated']:

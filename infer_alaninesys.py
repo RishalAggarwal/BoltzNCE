@@ -42,6 +42,7 @@ def parse_arguments():
     p.add_argument("--tmin",    type=float, default=0.0,
                    help="endpoint of the integration time span")
     p.add_argument('--integration_method', type=str, default='dopri5')
+    p.add_argument('--test_samples_path', type=str, default=None, help='Path to the test samples for potential model')
     #p.add_argument('--data_path',type=str,default="data/",required=False)
     #p.add_argument('--split',type=str,default="AAAA",required=False)
     args=p.parse_args()
@@ -113,17 +114,17 @@ def compute_metrics(data,dlogf_np, topology, model_samples, n_atoms, n_dimension
     classical_target_energies = as_numpy(openmm_energy.energy(torch.from_numpy(data).reshape(-1, dim)/10))
     idxs = np.arange(len(model_samples))[~symmetry_change]
     log_w_np = -classical_model_energies - as_numpy(dlogf_np.reshape(-1,1)[idxs])
-    log_w_torch=torch.tensor(log_w_np)
-    log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
-    log_w_np=log_w_torch.numpy()
     if threshold>0:
         threshold_index=len(classical_model_energies) - int(threshold*len(classical_model_energies)/100)
         classical_model_energies=classical_model_energies[np.argsort(log_w_np,axis=0)[:,0],:]
         classical_model_energies=classical_model_energies[:threshold_index,:]
-        model_samples=model_samples[np.argsort(log_w_np,axis=0)[:,0],:]
-        traj_samples=md.Trajectory(as_numpy(model_samples[~symmetry_change])[:threshold_index,:], topology=topology)
+        model_samples=model_samples[~symmetry_change][np.argsort(log_w_np,axis=0)[:,0],:]
+        traj_samples=md.Trajectory(as_numpy(model_samples)[:threshold_index,:], topology=topology)
         log_w_np=np.sort(log_w_np,axis=0)
         log_w_np=log_w_np[:threshold_index]
+    log_w_torch=torch.tensor(log_w_np)
+    log_w_torch=log_w_torch - torch.logsumexp(log_w_torch,dim=(0,1))
+    log_w_np=log_w_torch.numpy()
     wandb.log({prefix + "Sampling efficiency Mean": sampling_efficiency(torch.from_numpy(log_w_np)).item()})
     plot_energy_histograms(classical_target_energies, classical_model_energies, log_w_np, prefix=prefix)
     phis_data= md.compute_phi(traj_samples_data)[1]
@@ -178,14 +179,19 @@ if __name__ == "__main__":
     integral_type = 'ode'
     if args['divergence']==True:
         integral_type='ode_divergence'
-    print("########## generating initial samples")
-    samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type)
-    if potential_model is not None:
-        dlogf_np= get_potential_logp(samples_np, interpolant_obj)
+    if args['model_type']=='vector_field':
+        print("########## generating initial samples")
+        samples_np,dlogf_np=gen_samples(n_samples=args['n_samples'],n_sample_batches=args['n_sample_batches'],interpolant_obj=interpolant_obj,integral_type=integral_type)
+    elif args['model_type']=='potential':
+        samples_np=np.load(args['test_samples_path'])
+        dlogf_np= get_potential_logp(interpolant_obj,samples_np)
 
     model_samples,data,symmetry_change,traj_samples = process_gen_samples(samples_np, dlogf_np, scaling, topology, adj_list, atom_types, args)
     compute_metrics(data,dlogf_np, topology, model_samples, n_particles, dim, symmetry_change, traj_samples,args,prefix='',threshold=0)
-
+    thresholds=[0.02,0.05,0.2,0.5,1.0]
+    for threshold in thresholds:
+        print(f"Computing metrics for threshold {threshold}")
+        compute_metrics(data,dlogf_np, topology, model_samples, n_particles, dim, symmetry_change, traj_samples,args,prefix=f'threshold_{threshold}_',threshold=threshold)
     if args['save_generated']:
         numpy_dict={
             'samples': as_numpy(model_samples),
