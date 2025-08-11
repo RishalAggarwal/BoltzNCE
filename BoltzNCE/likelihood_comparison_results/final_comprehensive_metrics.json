@@ -1,0 +1,9 @@
+{
+  "ebm__vs_energies_mse": 11258.126864898117,
+  "ebm__vs_energies_mae": 101.8047216289902,
+  "ebm__vs_energies_pearson_r": -0.28068946826982855,
+  "ebm__vs_energies_pearson_p": 0.0,
+  "ebm__vs_energies_spearman_r": -0.81515293915449,
+  "ebm__vs_energies_spearman_p": 0.0,
+  "ebm__vs_energies_r2": -12.999651759884408,
+  "ebm__vs_energies_ess": 
