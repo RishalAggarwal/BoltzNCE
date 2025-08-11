@@ -615,12 +615,12 @@ if __name__== "__main__":
         samples_np =samples_np.reshape(-1, n_atoms*n_dimensions)
         aligned_idxs = np.arange(len(samples_np))
         symmetry_change = np.zeros(len(samples_np), dtype=bool)
-        _, dataloader = get_aa2_single_dataloader(samples_np,h_initial,512,True,0,kabsch=False)
+        _, dataloader = get_aa2_single_dataloader(samples_np,h_initial,**args['dataloader'])
         threshold_weights=[0.02,0.05,0.2,0.5,1.0]
         for i in range(args['n_epochs']):
             print(f"########## Epoch {i+1}")
             potential_model.train()
-            potential_model=train_potential(args, dataloader, interpolant_obj, potential_model, optim_potential, scheduler_potential, num_epochs=1, window_size=0.0125, num_negatives=1, nce_weight=1.0,grad_norm=None,scheduler_checkpoint=300)
+            potential_model=train_potential(args, dataloader, interpolant_obj, potential_model, optim_potential, scheduler_potential, **args['training'],**args['train_potential'])
             potential_model.eval()
             interpolant_obj.potential_function = potential_model
             if i==5:

@@ -1,0 +1,77 @@
+config: configs/train_potential_aa2_small_correctedbias.yaml
+config_save_name: saved_models/trained_potential_trig_graphormer_aa2_small_correctedbias.yaml
+dataloader:
+  batch_size: 512
+  biased: false
+  data_path: data/2AA-1-large/
+  kabsch: false
+  num_workers: 0
+  shuffle: true
+  split: gen_biased
+ema: false
+ema_model:
+  beta: 0.999
+  update_every: 10
+  update_model_with_ema_every: null
+graphormer:
+  activation_dropout: 0.0
+  attention_dropout: 0.0
+  attention_heads: 32
+  blocks: 1
+  dropout: 0.0
+  embed_dim: 256
+  ffn_embed_dim: 256
+  input_dropout: 0.0
+  num_kernel: 50
+gvp:
+  n_hidden: 128
+  n_message_gvps: 1
+  n_update_gvps: 1
+  n_vec: 32
+  use_dst_feats: false
+  vector_gating: true
+interpolant:
+  integration_interpolant: linear
+  interpolant_type: trig
+  ot: false
+load_potential_checkpoint: saved_models/trained_potential_trig_graphormer_aa2_small_correctedbias.pt
+load_vector_field_checkpoint: saved_models/trained_vector_9_layer_kabsch_aa2_ema_correctedbias.pt
+model_type: potential
+n_dimensions: 3
+num_particles: 22
+optimizer:
+  lr: 0.001
+  weight_decay: 0.0
+optimizer_type: adam
+potential_model:
+  num_features: 76
+  num_layers: 10
+  num_particles: 22
+potential_type: graphormer
+save_potential_checkpoint: saved_models/trained_potential_trig_graphormer_aa2_small_correctedbias.pt
+save_vector_field_checkpoint: saved_models/trained_vector_9_layer_kabsch_aa2_ema_correctedbias.pt
+scheduler:
+  factor: 0.5
+  min_lr: 1.0e-05
+  mode: min
+  patience: 30
+  verbose: true
+train_potential:
+  nce_weight: 1.0
+  num_negatives: 1
+  window_size: 0.0125
+train_vector:
+  endpoint: false
+  self_conditioning: false
+  tweight_max: 1.5
+training:
+  grad_norm: null
+  num_epochs: 1
+  scheduler_checkpoint: 300
+vector_field_model:
+  n_coord_gvps: 1
+  n_features: 76
+  n_layers: 9
+wandb: true
+wandb_name: potential_trainining_trig_graphormer_aa2_small_correctedbias
+wandb_project: BoltzNCE_aa2
