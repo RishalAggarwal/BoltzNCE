@@ -11,7 +11,7 @@ class AlaninesysGraphDataset(dgl.data.DGLDataset):
         super(AlaninesysGraphDataset, self).__init__(name='alaninesys_graph_dataset')
         self.topology, self.h_initial = alaninesys_featurizer(data_path, split)
         data_path = data_path + split
-        u=MDAnalysis.Universe(data_path +'/'+split+'.prmtop', [data_path + '/' + split.lower()+'_1.nc'])  
+        u=MDAnalysis.Universe(data_path +'/system.pdb', [data_path + '/trajectory1.dcd'])  
         if coords is not None:
             self.coords = np.load(data_path + '/' + coords)
             self.coords = torch.from_numpy(self.coords)
@@ -47,8 +47,8 @@ def get_alaninesys_dataset(data_path=None,batch_size=512,shuffle=True,num_worker
 
 def alaninesys_featurizer(data_path, split='AAAAAA'):
     data_path = data_path + split
-    u=MDAnalysis.Universe(data_path +'/'+split+'.prmtop', [data_path + '/' + split.lower()+'_1.nc']) 
-    topology = md.load_prmtop(data_path + '/' + split+'.prmtop')
+    u=MDAnalysis.Universe(data_path +'/system.pdb', [data_path + '/trajectory1.dcd']) 
+    topology = md.load_topology(data_path + '/system.pdb')
     atom_types = []
     amino_idx = []
     amino_types = []
