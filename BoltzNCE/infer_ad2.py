@@ -348,7 +348,7 @@ def get_ramachandran_and_free_energy(samples_np,energies_np,log_w_np,prefix=''):
 
 
 
-def calc_energy_w2(gen_energies, holdout_energies):
+def calc_energy_w2(gen_energies, holdout_energies,prefix=''):
     """Calcualate and log energy and torsion w2 distance 
 
     Args:
@@ -361,12 +361,12 @@ def calc_energy_w2(gen_energies, holdout_energies):
     # flatten both to 1-D
     
     gen_energies = gen_energies.ravel()
-    holdout_energies = holdout_energies.numpy(force = True).ravel()
+    holdout_energies = holdout_energies.ravel()
 
     # sort them
-    gen_energies_sorted = np.sort(gen_energies)
-    holdout_energies_sorted = np.sort(holdout_energies)
-    loss, log = ot.emd2_1d(gen_energies,holdout_energies,metric = "euclidean",log = True)
+    # gen_energies_sorted = np.sort(gen_energies)
+    # holdout_energies_sorted = np.sort(holdout_energies)
+    loss = ot.emd2_1d(gen_energies,holdout_energies,metric = "sqeuclidean")
 
     # # compute MSE of the sorted values = W2^2
     # w2_squared = np.mean((gen_energies_sorted - holdout_energies_sorted)**2)
@@ -374,9 +374,8 @@ def calc_energy_w2(gen_energies, holdout_energies):
     # # take sqrt to get W2
     # W2 = np.sqrt(w2_squared)
     
-    print(f"W2 distance: {loss:.6f}")
     # if you want to log to wandb (scalar)
-    wandb.log({"energies_w2": loss})
+    return np.sqrt(loss)
 
 def calc_torsion_w2(gen_angles,holdout_angles):
     """calculates OT w2 Torsion angles 

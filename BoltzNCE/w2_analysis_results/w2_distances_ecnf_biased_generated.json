@@ -1,0 +1,46 @@
+{
+  "config": {
+    "generated_data_paths": [
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ebm_endpoint_MCMC0_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ebm_ot_vector_MCMC0_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ebm_vector_MCMC0_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ecnf_biased_generated.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/endpoint_ot_ema_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/endpoint_ot_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/vector_ot_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/vector_ot_ema_0_numpy_dict.npz"
+    ],
+    "file_labels": [
+      "ebm_endpoint_MCMC0_0_",
+      "Model_ebm_ot_vector_MCMC0_0_1",
+      "ebm_vector_MCMC0_0_",
+      "ecnf_biased_generated",
+      "endpoint_ot_ema_0_",
+      "vector_ot_ema_5_",
+      "vector_ot_0_",
+      "vector_ot_ema_0_"
+    ],
+    "reference_data_path": null,
+    "samples_key": "samples",
+    "energies_key": "energies",
+    "n_samples_analysis": 10000,
+    "random_seed": 42,
+    "output_dir": "./w2_analysis_results/",
+    "save_results": true,
+    "create_plots": true
+  },
+  "file_label": "ecnf_biased_generated",
+  "sample_counts": {
+    "generated": 10000,
+    "reference": 10000
+  },
+  "energy_w2": 7.3709503143570805,
+  "torsion_w2": 1.088643691273665,
+  "metadata": {
+    "analysis_type": "W2_distance_comparison_multi_file",
+    "file_label": "ecnf_biased_generated",
+    "generated_data_path": "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ecnf_biased_generated.npz",
+    "reference_data_path": null,
+    "completed_successfully": true
+  }
+}

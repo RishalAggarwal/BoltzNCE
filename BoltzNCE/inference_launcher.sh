@@ -9,7 +9,7 @@
 #SBATCH --array=0-20%15
 
 # ─── replicates ──────────────────────────────────────────────────────────────
-replicates=5
+replicates=1
 
 # ─── parameter grid (largest → smallest, by decades) ─────────────────────────
 rtol_vals=(1e-5)
@@ -20,17 +20,27 @@ tmin_vals=(1e-3)
 # yaml_files=(
 #   saved_models/trained_vector_5_layer_ot.yaml
 #   # add more if you like…
-# )
+# ) # tmin_vals=(1e-3) for tmin 1e-3 for end point, 0 for vector field
 
-yaml_files=( saved_models/trained_vector_5_layer_ot.yaml  
+# yaml_files=( saved_models/trained_vector_5_layer_ot.yaml  
 
-saved_models/trained_vector_5_layer_ot_ema.yaml  
+# saved_models/trained_vector_5_layer_ot_ema.yaml  
+
+# saved_models/trained_vector_5_layer_ot_endpoint_tmax100.yaml  
+
+# saved_models/trained_vector_5_layer_ot_endpoint_tmax100_ema.yaml  
+
+# ) 
+yaml_files=(
 
 saved_models/trained_vector_5_layer_ot_endpoint_tmax100.yaml  
 
 saved_models/trained_vector_5_layer_ot_endpoint_tmax100_ema.yaml  
 
 ) 
+
+
+
 
 # ─── derive sizes & total tasks ──────────────────────────────────────────────
 num_cfg=${#yaml_files[@]}

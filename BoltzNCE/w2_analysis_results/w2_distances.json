@@ -1,0 +1,25 @@
+{
+  "config": {
+    "generated_data_path": "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/vector_ot_ema_0_numpy_dict.npz",
+    "reference_data_path": null,
+    "samples_key": "samples",
+    "energies_key": "energies",
+    "n_samples_analysis": 10000,
+    "random_seed": 42,
+    "output_dir": "./w2_analysis_results/",
+    "save_results": true,
+    "create_plots": true
+  },
+  "sample_counts": {
+    "generated": 10000,
+    "reference": 10000
+  },
+  "energy_w2": 7.008643839165404,
+  "torsion_w2": 1.1061439298283826,
+  "metadata": {
+    "analysis_type": "W2_distance_comparison",
+    "generated_data_path": "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/vector_ot_ema_0_numpy_dict.npz",
+    "reference_data_path": null,
+    "completed_successfully": true
+  }
+}

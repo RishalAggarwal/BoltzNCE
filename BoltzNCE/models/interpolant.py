@@ -201,6 +201,27 @@ class Interpolant(torch.nn.Module):
             for i in range(self.dim):
                 dlogp+= torch.autograd.grad(velocity[:,i], x,grad_outputs=torch.ones_like(velocity[:,i]),retain_graph=True)[0][:,i]
         return (velocity, -dlogp)
+    
+    def ode_divergence_forward_with_hh(self,t,x_log_prob_tuple):
+        x=x_log_prob_tuple[0].clone().detach()
+        log_prob=x_log_prob_tuple[1]
+        with torch.set_grad_enabled(True):
+            x.requires_grad=True
+            self.graph.ndata['x']=x.view(-1,self.n_dimensions)
+            t_clone=t.clone()
+            t_clone=t_clone*torch.ones((self.graph.batch_size,1)).to('cuda')
+            if not self.endpoint:
+                velocity=self.vector_field(t_clone,self.graph)
+                velocity=velocity.view(-1,self.dim)
+            else:
+                velocity=self.ode_endpoint_forward(t,x)
+            #compute dlogp
+           
+            self._noise = torch.randint(low=0, high=2, size=x.shape).to(x) * 2 - 1
+            noise_ddxs = torch.autograd.grad(velocity, x, self._noise, create_graph=True)[0]
+            dlogp = torch.sum((noise_ddxs * self._noise).view(-1, velocity.shape[-1]), 1, keepdim=True)
+            
+        return (velocity, -dlogp)
 
 
     def sde_forward(self,t,x):
@@ -290,6 +311,25 @@ class Interpolant(torch.nn.Module):
         #log_prob_prior=log_prob_prior.to('cuda')
         log_prob=log_prob_prior_unnormalized - log_prob[-1].view(-1,1)
         return log_prob
+    
+    @torch.no_grad()
+    def NLL_integral_with_hutchinsons(self,x_init,m):
+        self.setup_graph(x_init.shape[0])
+        x_init=x_init.to('cuda')
+        self.graph.ndata['x']=x_init.view(-1,self.n_dimensions)
+        t=self.get_timespan()
+        t=t.__reversed__()
+        x,log_prob=torchdiffeq.odeint_adjoint(self.ode_divergence_forward_with_hh, (x_init,torch.zeros(x_init.shape[0]).to(x_init.device)), t, method=self.integration_method,atol=self.atol,rtol=self.rtol,adjoint_params=())
+        x=x[-1]
+        x=x.cpu()
+        #x=remove_mean(x,n_particles=self.n_particles,n_dimensions=self.n_dimensions)
+        x=x.view(-1,self.dim)
+        log_prob_prior_unnormalized=-0.5 * x.pow(2).sum(dim=-1, keepdim=True).to('cuda')
+        #log_prob_prior=self.prior.log_prob(x).view(-1,1)
+        #log_prob_prior=log_prob_prior.to('cuda')
+        log_prob=log_prob_prior_unnormalized - log_prob[-1].view(-1,1)
+        return log_prob
+    
     
     def get_timespan(self,n_timesteps=100):
         tmax=0.999

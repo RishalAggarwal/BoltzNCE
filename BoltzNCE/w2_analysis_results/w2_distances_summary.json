@@ -1,0 +1,89 @@
+{
+  "config": {
+    "generated_data_paths": [
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ebm_endpoint_MCMC0_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ebm_ot_vector_MCMC0_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ebm_vector_MCMC0_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/ecnf_biased_generated.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/endpoint_ot_ema_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/endpoint_ot_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/vector_ot_0_numpy_dict.npz",
+      "/net/galaxy/home/koes/rishal/nce/BoltzNCE/BoltzNCE/generated/vector_ot_ema_0_numpy_dict.npz"
+    ],
+    "file_labels": [
+      "ebm_endpoint_MCMC0_0_",
+      "Model_ebm_ot_vector_MCMC0_0_1",
+      "ebm_vector_MCMC0_0_",
+      "ecnf_biased_generated",
+      "endpoint_ot_ema_0_",
+      "vector_ot_ema_5_",
+      "vector_ot_0_",
+      "vector_ot_ema_0_"
+    ],
+    "reference_data_path": null,
+    "samples_key": "samples",
+    "energies_key": "energies",
+    "n_samples_analysis": 10000,
+    "random_seed": 42,
+    "output_dir": "./w2_analysis_results/",
+    "save_results": true,
+    "create_plots": true
+  },
+  "analysis_type": "W2_distance_comparison_multi_file_summary",
+  "results_summary": {
+    "ebm_endpoint_MCMC0_0_": {
+      "energy_w2": 5.793319655978248,
+      "torsion_w2": 1.107785669782665,
+      "sample_count": 10000
+    },
+    "Model_ebm_ot_vector_MCMC0_0_1": {
+      "energy_w2": 8.336905616640482,
+      "torsion_w2": 1.0941608690125135,
+      "sample_count": 10000
+    },
+    "ebm_vector_MCMC0_0_": {
+      "energy_w2": 7.275296536428341,
+      "torsion_w2": 1.121708185942481,
+      "sample_count": 10000
+    },
+    "ecnf_biased_generated": {
+      "energy_w2": 7.3709503143570805,
+      "torsion_w2": 1.088643691273665,
+      "sample_count": 10000
+    },
+    "endpoint_ot_ema_0_": {
+      "energy_w2": 4.377521121606143,
+      "torsion_w2": 1.1336241906216784,
+      "sample_count": 10000
+    },
+    "vector_ot_ema_5_": {
+      "energy_w2": 9.643952459874424,
+      "torsion_w2": 1.1230860711248072,
+      "sample_count": 10000
+    },
+    "vector_ot_0_": {
+      "energy_w2": 8.789601088568302,
+      "torsion_w2": 1.1002565972334197,
+      "sample_count": 10000
+    },
+    "vector_ot_ema_0_": {
+      "energy_w2": 6.64868345855778,
+      "torsion_w2": 1.1156545848362203,
+      "sample_count": 10000
+    }
+  },
+  "energy_w2_stats": {
+    "mean": 7.27952878150135,
+    "std": 1.5821532450997373,
+    "min": 4.377521121606143,
+    "max": 9.643952459874424,
+    "best_model": "endpoint_ot_ema_0_"
+  },
+  "torsion_w2_stats": {
+    "mean": 1.1106149824784313,
+    "std": 0.014586745305211613,
+    "min": 1.088643691273665,
+    "max": 1.1336241906216784,
+    "best_model": "ecnf_biased_generated"
+  }
+}
