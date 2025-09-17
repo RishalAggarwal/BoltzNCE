@@ -296,7 +296,7 @@ if __name__ == "__main__":
         if args['model_type'] == 'vector_field':
             dataloader = get_alaninesys_dataset(**args['dataloader'])
         elif args['model_type'] == 'potential':
-            dataloader = get_alaninesys_dataset(**args['dataloader'], coords='train_gen_coords.npy')
+            dataloader = get_alaninesys_dataset(**args['dataloader'], coords='train_gen_coords_ff.npy')
     else:
         raise ValueError("Task must be either 'aa2' or 'alaninesys'")
     optimizer=torch.optim.Adam

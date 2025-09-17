@@ -8,6 +8,7 @@ import wandb
 import sys
 import openmm
 from openmm.unit import *
+from openmm.app import *
 from openmm.app import GBn2, HCT
 sys.path.append("./BoltzNCE/")
 from bgflow.utils import as_numpy
@@ -70,7 +71,7 @@ def process_gen_samples(samples_np,dlogf_np,scaling,topology,adj_list,atom_types
     #traj_samples_aligned = md.Trajectory(samples_np, topology=topology)
     model_samples = torch.from_numpy(traj_samples_aligned.xyz)
     data_path = args['data_path']  + args['split']
-    u=MDAnalysis.Universe(data_path+'/'+args['split']+'.prmtop', [data_path + '/' + args['split'].lower()+'_19.nc'])  
+    u=MDAnalysis.Universe(data_path+'/system.pdb', [data_path + '/trajectory1.dcd'])  
     coords =[]
     for ts in u.trajectory:
         coords.append(u.select_atoms('all').positions)
@@ -105,9 +106,9 @@ def compute_metrics(data,dlogf_np, topology, model_samples, n_atoms, n_dimension
     traj_samples_data = md.Trajectory(data.reshape(-1, n_atoms, 3), topology=topology)
     plot_ramachandrans(traj_samples_data, plot_name=prefix+'MD')
     data_path = args['data_path'] + args['split']
-    prmtop = openmm.app.AmberPrmtopFile(data_path + '/' + args['split']+'.prmtop')
-    forcefield = openmm.app.ForceField('amber14/protein.ff15ipq.xml', 'implicit/gbn2.xml')
-    system = forcefield.createSystem(prmtop.topology, nonbondedMethod=openmm.app.NoCutoff, constraints=openmm.app.HBonds)
+    ff=openmm.app.ForceField('amber14-all.xml', 'implicit/gbn2.xml')
+    pdb=openmm.app.PDBFile(data_path+"/system.pdb")
+    system = ff.createSystem(pdb.topology)
     integrator = openmm.LangevinMiddleIntegrator(300*openmm.unit.kelvin, 1/openmm.unit.picosecond, 2*openmm.unit.femtosecond)
     openmm_energy = OpenMMEnergy(bridge=OpenMMBridge(system, integrator, platform_name="CUDA"))
     classical_model_energies = as_numpy(openmm_energy.energy(model_samples.reshape(-1, dim)[~symmetry_change]/10))

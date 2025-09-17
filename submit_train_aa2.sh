@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #job name
-#SBATCH --job aa2_training
+#SBATCH --job al4_training
 #SBATCH --partition koes_gpu
 #SBATCH --gres=gpu:1
 #SBATCH -c 12
 #SBATCH --constraint L40
 #SBATCH --mail-user=ria43@pitt.edu
 #SBATCH --mail-type=ALL
-#SBATCH -x g020
+##SBATCH -x g020
 
 # directory name where job will be run (on compute node)
 #job_dir="${user}_${SLURM_JOB_ID}.dcb.private.net"
@@ -34,4 +34,4 @@ source activate BoltzNCE
 module load cuda/12.1
 #python ./train_pharmnn.py --train_data data/chemsplit_train0.pkl --test_data data/chemsplit_test0.pkl  --wandb_name default_chemsplit0_large_256 --grid_dimension 15.5  --expand_width 0 --model models/default_chemsplit0_large_256_last_model.pkl --lr 0.00001
 #python ./train_pharmnn.py --train_data data/chemsplit_train2_with_ligand.pkl --test_data data/chemsplit_test2_with_ligand.pkl  --wandb_name obabel_chemsplit2_2 --negative_data data/obabel_chemsplit_2_negatives_train.txt --batch_size 256 --model models/obabel_chemsplit2_last_model.pkl --lr 0.00001
-python train_aa2.py --config configs/train_potential_al6_ot_large.yaml
+python train_aa2.py  --config configs/train_potential_al4_large.yaml
