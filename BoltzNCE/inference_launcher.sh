@@ -14,7 +14,7 @@ replicates=1
 # ─── parameter grid (largest → smallest, by decades) ─────────────────────────
 rtol_vals=(1e-5)
 atol_vals=(1e-5)
-tmin_vals=(1e-3)
+tmin_vals=(0)
 
 # ─── one or more model configs ───────────────────────────────────────────────
 # yaml_files=(
@@ -31,12 +31,17 @@ tmin_vals=(1e-3)
 # saved_models/trained_vector_5_layer_ot_endpoint_tmax100_ema.yaml  
 
 # ) 
-yaml_files=(
+# yaml_files=(
 
-saved_models/trained_vector_5_layer_ot_endpoint_tmax100.yaml  
+# saved_models/unweighted_ot_endpoint_tmax100_ema.yaml.  
 
-saved_models/trained_vector_5_layer_ot_endpoint_tmax100_ema.yaml  
+# saved_models/unweighted_ot_endpoint_tmax100.yaml  
 
+# ) 
+
+yaml_files=( saved_models/unweighted_ot.yaml  
+
+saved_models/unweighted_ot_ema.yaml
 ) 
 
 
