@@ -1,0 +1,48 @@
+config_save_name: saved_models/trained_potential_trig_graphormer_aa2_small_correctedbias.yaml
+dataloader:
+  batch_size: 512
+  num_workers: 8
+  shuffle: true
+  kabsch: false
+  split: gen_correctedbias
+ema: false
+potential_type: graphormer
+graphormer:
+  embed_dim: 256
+  ffn_embed_dim: 256
+  attention_heads: 32
+  dropout: 0.0
+  attention_dropout: 0.0
+  activation_dropout: 0.0
+  num_kernel: 50
+  input_dropout: 0.0
+  blocks: 1
+interpolant:
+  dim: 66
+  interpolant_type: trig
+  n_dimensions: 3
+  num_particles: 22
+model_type: potential
+n_dimensions: 3
+num_particles: 22
+optimizer_type: adam
+optimizer:
+  lr: 0.001
+  weight_decay: 0.0
+potential_model:
+  num_layers: 10
+  num_particles: 22
+save_potential_checkpoint: saved_models/trained_potential_trig_graphormer_aa2_small_correctedbias.pt
+scheduler:
+  factor: 0.5
+  min_lr: 1.0e-05
+  mode: min
+  patience: 30
+  verbose: true
+training:
+  num_epochs: 10
+train_potential:
+  window_size: 0.0125
+wandb: true
+wandb_name: potential_trainining_trig_graphormer_aa2_small_correctedbias
+wandb_project: BoltzNCE_aa2
