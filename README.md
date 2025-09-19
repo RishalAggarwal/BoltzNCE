@@ -24,7 +24,7 @@ Trained models can be downloaded from [here](https://bits.csb.pitt.edu/files/Bol
 
 ```cd BoltzNCE```
 
-For training the flow matching models on the original unbiased dataset run the following:
+For training the flow matching models on the original **unbiased** dataset run the following:
 
 GVP - Vector field:
 
@@ -34,7 +34,7 @@ GVP - Endpoint:
 
 ```python train_ad2.py --config ./configs/unweighted_ot_endpoint_tmax100_ema.yaml```
 
-For training the flow matching models on the biased dataset run the following:
+For training the flow matching models on the **biased** dataset run the following:
 
 GVP - Vector field:
 
@@ -104,7 +104,9 @@ To train the EBM model:
 
 To run inference on a sample dipeptide:
 
-```python infer_aa2.py --config configs/infer_potential_aa2_small_correctedbias.yaml --no-divergence --wandb_inference_name inference_aa2_potential_small_correctedbias_{dipeptide}_100k --peptide {dipeptide} --n_sample_batches 200 --save_generated --save_prefix ./generated/GN_ebm_100k_1_```
+```python infer_aa2.py --config configs/infer_potential_aa2_small_correctedbias.yaml --no-divergence --wandb_inference_name inference_aa2_potential_small_correctedbias_{dipeptide}_100k --peptide {dipeptide} --n_sample_batches 200 --save_generated --save_prefix ./generated/{dipeptide}_ebm_100k_1_```
+
+Fill in the two letter sequence for the dipeptide above
 
 ## Other evaluations/benchmarks
 
