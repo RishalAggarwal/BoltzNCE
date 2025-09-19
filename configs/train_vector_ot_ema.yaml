@@ -11,5 +11,5 @@ interpolant:
 
 
 dataloader:
-  dataset: '../data/AD2_relaxed.npy'
+  dataset: './data/AD2_relaxed.npy'
 

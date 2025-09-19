@@ -1,5 +1,5 @@
 # BoltzNCE
-Boltzmann emulator -> generator with NCE
+Boltzmann emulator -> generator with EBM
 
 
 ## Setup Environment
@@ -10,9 +10,13 @@ Trained model weights have been uploaded, but to reproduce the next section is f
 
 ## Dataset
 
-The dataset can be downloaded from [here](https://osf.io/srqg7/files/osfstorage?view_only=28deeba0845546fb96d1b2f355db0da5). Download the ```ad2_*.npy``` files and place them in the ```data``` folder.
+The ADP dataset can be downloaded from [here](https://osf.io/srqg7/files/osfstorage?view_only=28deeba0845546fb96d1b2f355db0da5). Download the ```ad2_*.npy``` files and place them in the ```data``` folder.
 
-## Model training
+The dipeptides dataset can be downloaded from [here](https://osf.io/n8vz3/files/osfstorage?view_only=1052300a21bd43c08f700016728aa96e#). Add the downloaded stuff to the ```data``` folder.
+
+## ADP experiments
+
+### Model training
 
 ```cd BoltzNCE```
 
@@ -20,35 +24,35 @@ For training the flow matching models on the original unbiased dataset run the f
 
 GVP - Vector field:
 
-```python train_ad2.py --config ../configs/unweighted_ot_ema.yaml```
+```python train_ad2.py --config ./configs/unweighted_ot_ema.yaml```
 
 GVP - Endpoint:
 
-```python train_ad2.py --config ../configs/unweighted_ot_endpoint_tmax100_ema.yaml```
+```python train_ad2.py --config ./configs/unweighted_ot_endpoint_tmax100_ema.yaml```
 
 For training the flow matching models on the biased dataset run the following:
 
 GVP - Vector field:
 
-```python train_ad2.py --config ../configs/train_vector_ot_ema.yaml```
+```python train_ad2.py --config ./configs/train_vector_ot_ema.yaml```
 
 GVP - Endpoint:
 
-```python train_ad2.py --config ../configs/train_vector_ot_endpoint_tmax100_ema.yaml```
+```python train_ad2.py --config ./configs/train_vector_endpoint_tmax100_ema.yaml```
 
 The flow matching models need to be trained before we can set the energy based models to train. To train the Energy Based Models, run the following commands:
 
 BoltzNCE - Vector field:
 
-```python train_ad2.py --config ../configs/train_potential_graphormer_1b8ld256.yaml```
+```python train_ad2.py --config ./configs/train_potential_graphormer_1b8ld256.yaml```
 
 BoltzNCE - Endpoint:
 
-```python train_ad2.py --config ../configs/train_potential_graphormer_endpoint.yaml```
+```python train_ad2.py --config ./configs/train_potential_graphormer_endpoint.yaml```
 
-## Model inference
+### Model inference
 
-To evaluate the flow matching models trained on the unbiased dataset:
+To evaluate the flow matching models trained on the **unbiased** dataset:
 
 GVP - Vector field:
 
@@ -58,24 +62,46 @@ GVP - Endpoint
 
 ```python infer_ad2.py --config saved_models/unweighted_ot_endpoint_tmax100_ema.yaml```
 
-To evaluate the flow matching models trained on biased dataset:
+To evaluate the flow matching models trained on **biased** dataset:
 
 GVP - Vector field:
 
-```python infer_ad2.py --config ../configs/infer_vector_ot_ema.yaml```
+```python infer_ad2.py --config ./configs/infer_vector_ot_ema.yaml```
 
 GVP - Endpoint:
 
-```python infer_ad2.py --config ../configs/infer_vector_endpoint_tmax100_ema.yaml```
+```python infer_ad2.py --config ./configs/infer_vector_endpoint_tmax100_ema.yaml```
 
 To evaluate the Energy based models run the following:
 
 BoltzNCE - Vector field:
 
-```python infer_ad2.py --config ../configs/infer_potential_graphormer_1b8ld256.yaml```
+```python infer_ad2.py --config ./configs/infer_potential_graphormer_1b8ld256.yaml```
 
 BoltzNCE - Endpoint:
 
-```python infer_ad2.py --config ../configs/infer_potential_graphormer_endpoint.yaml```
+```python infer_ad2.py --config ./configs/infer_potential_graphormer_endpoint.yaml```
 
- 
+## Dipeptide Experiments
+
+### Model Training
+
+To train the vector field model:
+
+```python train_aa2.py --config configs/train_vector_kabsch_aa2.yaml```
+
+To generate the dataset for EBM training with the trained vector field model, have a look at **sample_generation_aa2.sh**.
+
+To train the EBM model:
+
+```python train_aa2.py --config configs/train_potential_aa2_small_biased.yaml```
+
+### Model Inference
+
+To run inference on a sample dipeptide:
+
+```python infer_aa2.py --config configs/infer_potential_aa2_window0125.yaml --no-divergence --wandb_inference_name inference_aa2_potential_training_{dipeptide}_100k --peptide {dipeptide} --n_sample_batches 200```
+
+## Other evaluations/benchmarks
+
+The remaining evaluations/benchmarks are present in the notebooks folder

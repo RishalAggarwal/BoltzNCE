@@ -1,7 +1,7 @@
 config_save_name: saved_models/unweighted_ot_endpoint_tmax100_ema.yaml
 dataloader:
   batch_size: 512
-  dataset: ../data/AD2_relaxed.npy
+  dataset: ./data/AD2_relaxed.npy
   num_workers: 8
   scaling: 1.0
   shuffle: true

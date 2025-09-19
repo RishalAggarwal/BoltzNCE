@@ -620,7 +620,7 @@ if __name__== "__main__":
         for i in range(args['n_epochs']):
             print(f"########## Epoch {i+1}")
             potential_model.train()
-            potential_model=train_potential(args, dataloader, interpolant_obj, potential_model, optim_potential, scheduler_potential, **args['training'],**args['train_potential'])
+            potential_model=train_potential(args, dataloader, interpolant_obj, potential_model, optim_potential, scheduler_potential,scheduler_checkpoint=300, **args['training'],**args['train_potential'])
             potential_model.eval()
             interpolant_obj.potential_function = potential_model
             if i==5:
