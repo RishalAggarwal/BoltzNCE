@@ -100,7 +100,7 @@ To train the EBM model:
 
 To run inference on a sample dipeptide:
 
-```python infer_aa2.py --config configs/infer_potential_aa2_window0125.yaml --no-divergence --wandb_inference_name inference_aa2_potential_training_{dipeptide}_100k --peptide {dipeptide} --n_sample_batches 200```
+```python infer_aa2.py --config configs/infer_potential_aa2_small_correctedbias.yaml --no-divergence --wandb_inference_name inference_aa2_potential_small_correctedbias_{dipeptide}_100k --peptide {dipeptide} --n_sample_batches 200 --save_generated --save_prefix ./generated/GN_ebm_100k_1_```
 
 ## Other evaluations/benchmarks
 
