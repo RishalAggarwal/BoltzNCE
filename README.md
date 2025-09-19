@@ -14,6 +14,10 @@ The ADP dataset can be downloaded from [here](https://osf.io/srqg7/files/osfstor
 
 The dipeptides dataset can be downloaded from [here](https://osf.io/n8vz3/files/osfstorage?view_only=1052300a21bd43c08f700016728aa96e#). Add the downloaded stuff to the ```data``` folder.
 
+## Trained models
+
+Trained models can be downloaded from [here](https://bits.csb.pitt.edu/files/BoltzNCE/saved_models_bits/). Add them to the ```saved_models``` directory
+
 ## ADP experiments
 
 ### Model training
