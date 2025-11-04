@@ -1,6 +1,6 @@
  # BoltzNCE
 
-![Method overview](./figures/overview_figure.png)
+![Method overview](./figures/overview_whitebg.png)
 
 BoltzNCE — Learning likelihoods for Boltzmann generation with stochastic interpolants and Noise Contrastive Estimation.
 
