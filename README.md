@@ -1,113 +1,113 @@
-# BoltzNCE
-Boltzmann emulator -> generator with EBM
+ # BoltzNCE
 
+![Method overview](./figures/overview_figure.png)
 
-## Setup Environment
+BoltzNCE — Learning likelihoods for Boltzmann generation with stochastic interpolants and Noise Contrastive Estimation.
 
-All the required packages besides ```bgmol, bgflow``` are in ```install_things.sh```
+Paper: [BoltzNCE (arXiv:2507.00846)](https://arxiv.org/abs/2507.00846)
 
-Trained model weights have been uploaded, but to reproduce the next section is for model training.
+## Overview
 
-## Dataset
+BoltzNCE provides code to train and evaluate energy-based models and flow-matching/vector-field models for molecular systems (ADP, dipeptides). The repository includes training and inference scripts, example configs, dataset readers, model implementations, and a set of pretrained weights.
 
-The ADP dataset can be downloaded from [here](https://osf.io/srqg7/files/osfstorage?view_only=28deeba0845546fb96d1b2f355db0da5). Download the ```ad2_*.npy``` files and place them in the ```data``` folder.
+Key components:
+- Model implementations: `BoltzNCE/models` (EBM, Graphormer, GVP, etc.)
+- Dataset loaders: `BoltzNCE/dataset`
+- Training and inference scripts: top-level `train_*.py` and `infer_*.py`
+- Example configs: `configs/`
 
-The dipeptides dataset can be downloaded from [here](https://osf.io/n8vz3/files/osfstorage?view_only=1052300a21bd43c08f700016728aa96e#). Add the downloaded stuff to the ```data``` folder.
+## Requirements & setup
 
-## Trained models
+1. Install system dependencies and common python packages. The repository includes a helper script for many dependencies:
 
-Trained models can be downloaded from [here](https://bits.csb.pitt.edu/files/BoltzNCE/saved_models_bits/). Add them to the ```saved_models``` directory
+```bash
+./install_things.sh
+```
 
-## ADP experiments
+Note: the helper script does not install `bgmol` and `bgflow` — these must be installed separately.
 
-### Model training
+## Data
 
-```cd BoltzNCE```
+Download the datasets and place files into the repository `data/` directory:
 
-For training the flow matching models on the original **unbiased** dataset run the following:
+- ADP dataset: https://osf.io/srqg7/files/osfstorage?view_only=28deeba0845546fb96d1b2f355db0da5 — place `ad2_*.npy` files under `data/`
+- Dipeptides: https://osf.io/n8vz3/files/osfstorage?view_only=1052300a21bd43c08f700016728aa96e# — place the downloaded files in `data/`
 
-GVP - Vector field:
+Dataset reading utilities live in `BoltzNCE/dataset` (e.g. `ad2_dataset.py`, `aa2_dataset.py`).
 
-```python train_ad2.py --config ./configs/unweighted_ot_ema.yaml```
+## Pretrained models
 
-GVP - Endpoint:
+Pretrained weights are available at the (project) download location: https://bits.csb.pitt.edu/files/BoltzNCE/saved_models_bits/
+Download and place the files into `saved_models/`.
 
-```python train_ad2.py --config ./configs/unweighted_ot_endpoint_tmax100_ema.yaml```
+## Examples: training and inference
 
-For training the flow matching models on the **biased** dataset run the following:
+All scripts assume you run from the repository root.
 
-GVP - Vector field:
+ADP experiments (examples):
 
-```python train_ad2.py --config ./configs/train_vector_ot_ema.yaml```
+Train GVP vector field (unbiased):
 
-GVP - Endpoint:
+```bash
+python train_ad2.py --config ./configs/unweighted_ot_ema.yaml
+```
 
-```python train_ad2.py --config ./configs/train_vector_endpoint_tmax100_ema.yaml```
+Train BoltzNCE potential (vector-field EBM):
 
-The flow matching models need to be trained before we can set the energy based models to train. To train the Energy Based Models, run the following commands:
+```bash
+python train_ad2.py --config ./configs/train_potential_graphormer_1b8ld256.yaml
+```
 
-BoltzNCE - Vector field:
+Run inference for a trained model (example):
 
-```python train_ad2.py --config ./configs/train_potential_graphormer_1b8ld256.yaml```
+```bash
+python infer_ad2.py --config ./configs/infer_potential_graphormer_1b8ld256.yaml
+```
 
-BoltzNCE - Endpoint:
+Dipeptide experiments (examples):
 
-```python train_ad2.py --config ./configs/train_potential_graphormer_endpoint.yaml```
+Train vector field:
 
-### Model inference
+```bash
+python train_aa2.py --config configs/train_vector_kabsch_aa2.yaml
+```
 
-To evaluate the flow matching models trained on the **unbiased** dataset:
+Generate samples for EBM training: see `sample_generation_aa2.sh`.
 
-GVP - Vector field:
+Train EBM for dipeptides:
 
-```python infer_ad2.py --config saved_models/unweighted_ot_ema.yaml```
+```bash
+python train_aa2.py --config configs/train_potential_aa2_small_biased.yaml
+```
 
-GVP - Endpoint
+Run inference for a dipeptide (example):
 
-```python infer_ad2.py --config saved_models/unweighted_ot_endpoint_tmax100_ema.yaml```
+```bash
+python infer_aa2.py --config configs/infer_potential_aa2_small_correctedbias.yaml \
+  --no-divergence --wandb_inference_name inference_aa2_potential_small_correctedbias_{dipeptide}_100k \
+  --peptide {dipeptide} --n_sample_batches 200 --save_generated --save_prefix ./generated/{dipeptide}_ebm_100k_1_
+```
 
-To evaluate the flow matching models trained on **biased** dataset:
+Replace `{dipeptide}` with the two-letter code for the dipeptide.
 
-GVP - Vector field:
+## Configuration
 
-```python infer_ad2.py --config ./configs/infer_vector_ot_ema.yaml```
+Example config files are in `configs/`. These YAML files control training/inference hyperparameters. The top-level training scripts accept `--config` to point to a YAML file.
 
-GVP - Endpoint:
+## Notebooks & evaluations
 
-```python infer_ad2.py --config ./configs/infer_vector_endpoint_tmax100_ema.yaml```
+Additional evaluations, benchmarks, and experiments are in the `notebooks/` folder (e.g. `benchmark_dipeptide.ipynb`). Use these for exploratory analysis and plots.
 
-To evaluate the Energy based models run the following:
+## Citation
 
-BoltzNCE - Vector field:
+If you use this code, please cite our paper. BibTeX (arXiv preprint):
 
-```python infer_ad2.py --config ./configs/infer_potential_graphormer_1b8ld256.yaml```
+```bibtex
+@article{aggarwal2025boltznce,
+  title={BoltzNCE: Learning Likelihoods for Boltzmann Generation with Stochastic Interpolants and Noise Contrastive Estimation},
+  author={Aggarwal, Rishal and Chen, Jacky and Boffi, Nicholas M and Koes, David Ryan},
+  journal={arXiv preprint arXiv:2507.00846},
+  year={2025}
+}
+```
 
-BoltzNCE - Endpoint:
-
-```python infer_ad2.py --config ./configs/infer_potential_graphormer_endpoint.yaml```
-
-## Dipeptide Experiments
-
-### Model Training
-
-To train the vector field model:
-
-```python train_aa2.py --config configs/train_vector_kabsch_aa2.yaml```
-
-To generate the dataset for EBM training with the trained vector field model, have a look at **sample_generation_aa2.sh**.
-
-To train the EBM model:
-
-```python train_aa2.py --config configs/train_potential_aa2_small_biased.yaml```
-
-### Model Inference
-
-To run inference on a sample dipeptide:
-
-```python infer_aa2.py --config configs/infer_potential_aa2_small_correctedbias.yaml --no-divergence --wandb_inference_name inference_aa2_potential_small_correctedbias_{dipeptide}_100k --peptide {dipeptide} --n_sample_batches 200 --save_generated --save_prefix ./generated/{dipeptide}_ebm_100k_1_```
-
-Fill in the two letter sequence for the dipeptide above
-
-## Other evaluations/benchmarks
-
-The remaining evaluations/benchmarks are present in the notebooks folder
