@@ -73,6 +73,7 @@ vector_field_model:
   n_layers: 5
   num_particles: 22
   self_conditioning: false
+weight_threshold: 0
 wandb: true
 wandb_name: potential_trainining_trig_graphormer_1b8ld256_2
 wandb_project: BoltzNCE_alanine

@@ -546,6 +546,35 @@ if __name__== "__main__":
         dlogf_np=get_potential_logp(interpolant_obj,samples_np)
         log_w_np=get_importance_weights(dlogf_np,energies_np)
         
+        all_samples=torch.from_numpy(np.load("./data/AD2_relaxed_holdout.npy")).reshape(-1, 66).float()
+        
+        # Convert log weights to probabilities for weighted sampling
+        log_w_flat = log_w_np.flatten()
+        #weights_prob = np.exp(log_w_flat - np.max(log_w_flat))  # for numerical stability
+        weights_prob =  np.exp(log_w_flat) / np.sum(np.exp(log_w_flat))
+        
+        print(" ##### Calculating Energy W2 for 10000 samples (weighted)")
+        # Sample 10k indices according to importance weights
+        weighted_indices = np.random.choice(len(energies_np), size=10000, replace=False, p=weights_prob)
+        w2_energies_np = energies_np[weighted_indices]
+        w2_energies_data_holdout = as_numpy(energies_data_holdout[torch.randint(0, len(energies_data_holdout), (10000,))])
+        
+        energy_w2 = calc_energy_w2(w2_energies_np, w2_energies_data_holdout)
+        wandb.log({"energy_w2": energy_w2})
+        print(f"Energy W2 distance: {energy_w2}")
+        
+        print(" ##### Calculating torsion W2 for 10000 samples (weighted)")
+        w2_holdout_samples = all_samples[torch.randint(0, len(all_samples), (10000,))]
+        w2_holdout_samples = remove_mean(w2_holdout_samples, n_particles=num_particles, n_dimensions=n_dimensions).numpy()
+        
+        # Sample generated samples according to importance weights
+        w2_gen_samples = samples_np[weighted_indices]
+        
+        w2_gen_angles = get_torsion_angles(w2_gen_samples)
+        w2_holdout_angles = get_torsion_angles(w2_holdout_samples)
+        
+        calc_torsion_w2(w2_gen_angles, w2_holdout_angles)
+        
     else:
         raise ValueError("Model type not recognized")
 
